@@ -1,0 +1,53 @@
+name: Claude Auto-Dev
+
+on:
+    schedule:
+        - cron: "0 */12 * * *"
+    workflow_dispatch:
+
+jobs:
+    claude-develop:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Read SPEC.md
+              id: spec
+              run: |
+                  SPEC=$(cat SPEC.md)
+                  echo "spec<<EOF" >> $GITHUB_OUTPUT
+                  echo "$SPEC" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+            - name: Run Claude Code
+              uses: anthropics/claude-code-action@v1
+              with:
+                  anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+                  prompt: |
+                      Ты — бекенд разработчик, работающий над проектом по ТЗ.
+
+                      ТЗ проекта (файл SPEC.md):
+                      ${{ steps.spec.outputs.spec }}
+
+                      ИНСТРУКЦИЯ:
+                      1. Прочитай SPEC.md и найди все этапы, связанные с бекендом проекта. Выполненные отмечены [x], невыполненные [ ].
+                      2. Возьми первый невыполненный этап [ ] и реализуй его полностью.
+                      3. После реализации — обнови SPEC.md: замени [ ] на [x] у завершённого этапа.
+                      4. Если этап слишком большой — реализуй максимум за одну итерацию и оставь [ ],
+                         добавив под ним заметку "// в процессе: что сделано".
+                      5. Сделай git commit с сообщением: "feat: [название этапа]"
+
+                      Пиши только рабочий код для бекенда. Не трогай уже выполненные этапы и этапы связаные с фронтендом.
+                  allowed_tools: "Bash,Edit,Write"
+
+            - name: Push changes
+              run: |
+                  git config user.name "Claude Bot"
+                  git config user.email "claude-bot@users.noreply.github.com"
+                  git add -A
+                  git diff --staged --quiet || git commit -m "auto-dev: $(date +'%Y-%m-%d %H:%M')"
+                  git push origin main
