@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  username      String         @unique
+  password_hash String
+  is_active     Boolean        @default(true)
+  is_admin      Boolean        @default(false)
+  created_at    DateTime       @default(now())
+  recipes       Recipe[]
+  refresh_tokens RefreshToken[]
+
+  @@map("users")
+}
+
+model Category {
+  id      String   @id @default(uuid())
+  name    String   @unique
+  slug    String   @unique
+  recipes Recipe[]
+
+  @@map("categories")
+}
+
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
+model Recipe {
+  id            String       @id @default(uuid())
+  author_id     String
+  title         String
+  description   String?
+  category_id   String?
+  difficulty    Difficulty
+  cook_time_min Int
+  servings      Int
+  cover_image   String?
+  is_published  Boolean      @default(false)
+  created_at    DateTime     @default(now())
+  updated_at    DateTime     @updatedAt
+  author        User         @relation(fields: [author_id], references: [id], onDelete: Cascade)
+  category      Category?    @relation(fields: [category_id], references: [id], onDelete: SetNull)
+  tags          RecipeTag[]
+  ingredients   Ingredient[]
+  steps         Step[]
+
+  @@index([author_id])
+  @@index([category_id])
+  @@index([is_published])
+  @@index([created_at(sort: Desc)])
+  @@map("recipes")
+}
+
+model Tag {
+  id      String      @id @default(uuid())
+  name    String      @unique
+  recipes RecipeTag[]
+
+  @@map("tags")
+}
+
+model RecipeTag {
+  recipe_id String
+  tag_id    String
+  recipe    Recipe @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
+  tag       Tag    @relation(fields: [tag_id], references: [id], onDelete: Cascade)
+
+  @@id([recipe_id, tag_id])
+  @@map("recipe_tags")
+}
+
+model Ingredient {
+  id         String   @id @default(uuid())
+  recipe_id  String
+  name       String
+  amount     Decimal? @db.Decimal(10, 2)
+  unit       String?
+  sort_order Int      @default(0)
+  recipe     Recipe   @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
+
+  @@map("ingredients")
+}
+
+model Step {
+  id          String      @id @default(uuid())
+  recipe_id   String
+  sort_order  Int
+  title       String
+  description String
+  timer_sec   Int?
+  recipe      Recipe      @relation(fields: [recipe_id], references: [id], onDelete: Cascade)
+  photos      StepPhoto[]
+
+  @@unique([recipe_id, sort_order])
+  @@map("steps")
+}
+
+model StepPhoto {
+  id         String @id @default(uuid())
+  step_id    String
+  s3_key     String
+  sort_order Int    @default(0)
+  step       Step   @relation(fields: [step_id], references: [id], onDelete: Cascade)
+
+  @@map("step_photos")
+}
+
+model RefreshToken {
+  id         String   @id @default(uuid())
+  user_id    String
+  token_hash String   @unique
+  expires_at DateTime
+  revoked    Boolean  @default(false)
+  created_at DateTime @default(now())
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([token_hash])
+  @@map("refresh_tokens")
+}

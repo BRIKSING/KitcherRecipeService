@@ -526,14 +526,14 @@ docker compose exec api npm run test                  # тесты (через d
 
 ### Этап 1 — Бэкенд: фундамент
 
-- [ ] Инициализировать проект: `npm init`, `tsconfig.json`, `package.json`, `Dockerfile`
-- [ ] Настроить `docker-compose.yml` (api + db + minio + minio-init)
-- [ ] Реализовать `config.ts` (Zod-валидация переменных окружения), `.env.example`
-- [ ] Описать все модели в `prisma/schema.prisma`
-- [ ] Создать первую миграцию Prisma (`prisma migrate dev`)
-- [ ] Создать Fastify app (`app.ts`), зарегистрировать плагины (prisma, jwt, multipart, rateLimit)
-- [ ] Настроить pino-логирование + глобальный error handler
-- [ ] Реализовать `GET /health` (проверка БД через Prisma и S3 через head-запрос)
+- [x] Инициализировать проект: `npm init`, `tsconfig.json`, `package.json`, `Dockerfile`
+- [x] Настроить `docker-compose.yml` (api + db + minio + minio-init)
+- [x] Реализовать `config.ts` (Zod-валидация переменных окружения), `.env.example`
+- [x] Описать все модели в `prisma/schema.prisma`
+- [x] Создать первую миграцию Prisma (`prisma migrate dev`)
+- [x] Создать Fastify app (`app.ts`), зарегистрировать плагины (prisma, jwt, multipart, rateLimit)
+- [x] Настроить pino-логирование + глобальный error handler
+- [x] Реализовать `GET /health` (проверка БД через Prisma и S3 через head-запрос)
 
 ### Этап 2 — Бэкенд: аутентификация
 
