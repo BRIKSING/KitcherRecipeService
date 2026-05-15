@@ -537,14 +537,14 @@ docker compose exec api npm run test                  # тесты (через d
 
 ### Этап 2 — Бэкенд: аутентификация
 
-- [ ] Описать Zod-схемы для auth (`schemas/auth.ts`)
-- [ ] Реализовать плагин `plugins/jwt.ts` (@fastify/jwt, декораторы sign/verify)
-- [ ] Реализовать `authService.ts` (register, login, refresh, logout)
-- [ ] Подключить bcrypt (`npm i bcrypt @types/bcrypt`)
-- [ ] Реализовать роутер `routes/auth.ts` (4 эндпоинта)
-- [ ] Реализовать middleware `authenticate.ts` и `isAdmin.ts`
-- [ ] Подключить rate limiting на `/auth/*` (@fastify/rate-limit)
-- [ ] Написать тесты `tests/auth.test.ts`
+- [x] Описать Zod-схемы для auth (`schemas/auth.ts`)
+- [x] Реализовать плагин `plugins/jwt.ts` (@fastify/jwt, декораторы sign/verify)
+- [x] Реализовать `authService.ts` (register, login, refresh, logout)
+- [x] Подключить bcrypt (`npm i bcrypt @types/bcrypt`)
+- [x] Реализовать роутер `routes/auth.ts` (4 эндпоинта)
+- [x] Реализовать middleware `authenticate.ts` и `isAdmin.ts`
+- [x] Подключить rate limiting на `/auth/*` (@fastify/rate-limit)
+- [x] Написать тесты `tests/auth.test.ts`
 
 ### Этап 3 — Бэкенд: рецепты, шаги, ингредиенты
 

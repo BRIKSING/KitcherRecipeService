@@ -7,6 +7,7 @@ import jwtPlugin from './plugins/jwt.js';
 import multipartPlugin from './plugins/multipart.js';
 import rateLimitPlugin from './plugins/rateLimit.js';
 import healthRoute from './routes/health.js';
+import authRoutes from './routes/auth.js';
 import { AppError, isFastifyError } from './utils/errors.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -63,6 +64,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   });
 
   await fastify.register(healthRoute);
+  await fastify.register(authRoutes);
 
   return fastify;
 }
