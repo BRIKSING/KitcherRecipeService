@@ -560,13 +560,13 @@ docker compose exec api npm run test                  # тесты (через d
 
 ### Этап 4 — Бэкенд: медиа и S3
 
-- [ ] Реализовать `storageService.ts` (@aws-sdk/client-s3: upload, delete, getSignedUrl)
-- [ ] Реализовать `utils/image.ts` (sharp: ресайз, EXIF autorotate, HEIC → JPEG)
-- [ ] Реализовать `photoService.ts` (upload, delete, reorder)
-- [ ] Реализовать роутер `routes/upload.ts` (`POST /upload/image`, @fastify/multipart)
-- [ ] Реализовать роутер `routes/photos.ts` (3 эндпоинта)
-- [ ] Настроить удаление S3-объектов при удалении рецепта/фото (Prisma middleware / хук)
-- [ ] Написать тесты `tests/upload.test.ts`
+- [x] Реализовать `storageService.ts` (@aws-sdk/client-s3: upload, delete, getSignedUrl)
+- [x] Реализовать `utils/image.ts` (sharp: ресайз, EXIF autorotate, HEIC → JPEG)
+- [x] Реализовать `photoService.ts` (upload, delete, reorder)
+- [x] Реализовать роутер `routes/upload.ts` (`POST /upload/image`, @fastify/multipart)
+- [x] Реализовать роутер `routes/photos.ts` (3 эндпоинта)
+- [x] Настроить удаление S3-объектов при удалении рецепта/фото (Prisma middleware / хук)
+- [x] Написать тесты `tests/upload.test.ts`
 
 ### Этап 5 — Бэкенд: категории, теги, финализация
 

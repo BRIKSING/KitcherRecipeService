@@ -10,6 +10,8 @@ import healthRoute from './routes/health.js';
 import authRoutes from './routes/auth.js';
 import recipesRoutes from './routes/recipes.js';
 import stepsRoutes from './routes/steps.js';
+import uploadRoutes from './routes/upload.js';
+import photosRoutes from './routes/photos.js';
 import { AppError, isFastifyError } from './utils/errors.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -69,6 +71,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(authRoutes);
   await fastify.register(recipesRoutes);
   await fastify.register(stepsRoutes);
+  await fastify.register(uploadRoutes);
+  await fastify.register(photosRoutes);
 
   return fastify;
 }

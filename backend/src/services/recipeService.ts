@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from '../config.js';
 import { NotFoundError, ForbiddenError } from '../utils/errors.js';
+import { storageService } from './storageService.js';
 import type { CreateRecipeInput, UpdateRecipeInput, RecipeFilters } from '../schemas/recipe.js';
 
 function buildImageUrl(key: string | null | undefined): string | null {
@@ -208,11 +209,26 @@ export function createRecipeService(prisma: PrismaClient) {
     },
 
     async delete(id: string, authorId: string, isAdmin: boolean) {
-      const existing = await prisma.recipe.findUnique({ where: { id } });
+      const existing = await prisma.recipe.findUnique({
+        where: { id },
+        include: {
+          steps: { include: { photos: { select: { s3_key: true } } } },
+        },
+      });
       if (!existing) throw new NotFoundError('Recipe not found');
       if (existing.author_id !== authorId && !isAdmin) throw new ForbiddenError('Access denied');
 
+      const s3Keys: string[] = [];
+      if (existing.cover_image) s3Keys.push(existing.cover_image);
+      for (const step of existing.steps) {
+        for (const photo of step.photos) {
+          s3Keys.push(photo.s3_key);
+          s3Keys.push(photo.s3_key.replace('/full.jpg', '/thumb.jpg'));
+        }
+      }
+
       await prisma.recipe.delete({ where: { id } });
+      await storageService.deleteMany(s3Keys);
     },
 
     async publish(id: string, authorId: string, isAdmin: boolean) {
