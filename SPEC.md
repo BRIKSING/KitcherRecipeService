@@ -630,7 +630,7 @@ docker compose exec api npm run test                  # тесты (через d
 - [ ] Обработка ошибок сети на клиенте (retry, алерты)
 - [ ] Поддержка iPad (landscape + portrait, 3-4 колонки)
 - [ ] Accessibility (VoiceOver для ключевых экранов)
-- [ ] Финальный прогон тестов бэкенда
+- [x] Финальный прогон тестов бэкенда
 
 ---
 
