@@ -1,0 +1,46 @@
+version: '3.9'
+
+services:
+  db-test:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: kitchen_test
+      POSTGRES_PASSWORD: kitchen_test
+      POSTGRES_DB: kitchen_test
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kitchen_test -d kitchen_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - kitchen-test
+
+  api-test:
+    build:
+      context: ./backend
+      target: development
+    command: npm run test
+    environment:
+      DATABASE_URL: postgresql://kitchen_test:kitchen_test@db-test:5432/kitchen_test
+      JWT_SECRET: test-secret-string-that-is-at-least-64-characters-long-for-safety
+      JWT_ACCESS_EXPIRES_IN: 30m
+      JWT_REFRESH_EXPIRES_IN: 30d
+      S3_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY_ID: testkey
+      S3_SECRET_ACCESS_KEY: testsecret
+      S3_BUCKET: test-bucket
+      S3_PUBLIC_URL: http://localhost:9000/test-bucket
+      S3_REGION: us-east-1
+      NODE_ENV: test
+      PORT: 3001
+      CORS_ORIGIN: http://localhost:8080
+      RATE_LIMIT_PER_MINUTE: 1000
+    depends_on:
+      db-test:
+        condition: service_healthy
+    networks:
+      - kitchen-test
+
+networks:
+  kitchen-test:
+    driver: bridge
