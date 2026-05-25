@@ -63,11 +63,12 @@ vi.mock('bcrypt', () => ({
   compare: vi.fn(),
 }));
 
+const mockS3Send = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+
 vi.mock('@aws-sdk/client-s3', () => ({
-  S3Client: vi.fn().mockImplementation(() => ({
-    send: vi.fn().mockResolvedValue({}),
-  })),
+  S3Client: vi.fn().mockImplementation(() => ({ send: mockS3Send })),
   HeadBucketCommand: vi.fn(),
+  DeleteObjectCommand: vi.fn().mockImplementation((args) => args),
 }));
 
 import { buildApp } from '../src/app.js';
@@ -132,6 +133,7 @@ beforeEach(() => {
   mockPrismaBase.$queryRaw.mockResolvedValue([]);
   mockPrismaBase.$transaction.mockImplementation(async (fn: any) => fn(mockTx));
   mockTx.step.updateMany.mockResolvedValue({ count: 1 });
+  mockS3Send.mockResolvedValue({});
 });
 
 // ─── GET /recipes ─────────────────────────────────────────────────────────────
@@ -494,6 +496,57 @@ describe('DELETE /recipes/:id', () => {
     });
 
     expect(res.statusCode).toBe(404);
+  });
+
+  it('deletes both full.jpg and thumb.jpg of cover_image from S3', async () => {
+    const recipeWithCover = {
+      ...baseRecipe,
+      cover_image: 'images/cover-uuid/full.jpg',
+      steps: [],
+    };
+    mockPrismaRecipe.findUnique.mockResolvedValue(recipeWithCover);
+    mockPrismaRecipe.delete.mockResolvedValue(recipeWithCover);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(204);
+    // Both full.jpg and thumb.jpg must be deleted from S3
+    expect(mockS3Send).toHaveBeenCalledTimes(2);
+    const sentKeys = mockS3Send.mock.calls.map((call: any) => call[0].Key);
+    expect(sentKeys).toContain('images/cover-uuid/full.jpg');
+    expect(sentKeys).toContain('images/cover-uuid/thumb.jpg');
+  });
+
+  it('deletes step photo full.jpg and thumb.jpg from S3', async () => {
+    const recipeWithStepPhotos = {
+      ...baseRecipe,
+      cover_image: null,
+      steps: [
+        {
+          photos: [
+            { s3_key: 'images/step-photo-uuid/full.jpg' },
+          ],
+        },
+      ],
+    };
+    mockPrismaRecipe.findUnique.mockResolvedValue(recipeWithStepPhotos);
+    mockPrismaRecipe.delete.mockResolvedValue(recipeWithStepPhotos);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(204);
+    expect(mockS3Send).toHaveBeenCalledTimes(2);
+    const sentKeys = mockS3Send.mock.calls.map((call: any) => call[0].Key);
+    expect(sentKeys).toContain('images/step-photo-uuid/full.jpg');
+    expect(sentKeys).toContain('images/step-photo-uuid/thumb.jpg');
   });
 });
 

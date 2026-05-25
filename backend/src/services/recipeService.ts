@@ -219,7 +219,11 @@ export function createRecipeService(prisma: PrismaClient) {
       if (existing.author_id !== authorId && !isAdmin) throw new ForbiddenError('Access denied');
 
       const s3Keys: string[] = [];
-      if (existing.cover_image) s3Keys.push(existing.cover_image);
+      if (existing.cover_image) {
+        // Delete both full and thumb variants of the cover image
+        s3Keys.push(existing.cover_image);
+        s3Keys.push(existing.cover_image.replace('/full.jpg', '/thumb.jpg'));
+      }
       for (const step of existing.steps) {
         for (const photo of step.photos) {
           s3Keys.push(photo.s3_key);
