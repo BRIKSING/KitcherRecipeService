@@ -1,6 +1,45 @@
 import { PrismaClient } from '@prisma/client';
+import { config } from '../config.js';
 import { NotFoundError, ForbiddenError, UnprocessableError } from '../utils/errors.js';
 import type { CreateStepInput, UpdateStepInput, ReorderStepsInput } from '../schemas/step.js';
+
+// ── Photo URL helpers ─────────────────────────────────────────────────────────
+
+function buildPhotoUrl(s3Key: string): string {
+  return `${config.S3_PUBLIC_URL}/${s3Key}`;
+}
+
+function buildThumbUrl(fullKey: string): string {
+  return buildPhotoUrl(fullKey.replace('/full.jpg', '/thumb.jpg'));
+}
+
+/**
+ * Transform a raw StepPhoto DB row to the public API format (spec §3.7).
+ * Returns { id, url, thumb_url, sort_order } instead of exposing raw s3_key.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatStepPhoto(photo: any) {
+  return {
+    id: photo.id,
+    url: buildPhotoUrl(photo.s3_key),
+    thumb_url: buildThumbUrl(photo.s3_key),
+    sort_order: photo.sort_order,
+  };
+}
+
+/**
+ * Transform a raw Step DB row (with nested photos) to the public API format.
+ * Replaces s3_key with url + thumb_url in every photo.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function formatStep(step: any) {
+  return {
+    ...step,
+    photos: Array.isArray(step.photos) ? step.photos.map(formatStepPhoto) : [],
+  };
+}
+
+// ── Step service factory ──────────────────────────────────────────────────────
 
 export function createStepService(prisma: PrismaClient) {
   async function assertRecipeOwner(
@@ -17,6 +56,7 @@ export function createStepService(prisma: PrismaClient) {
   }
 
   return {
+    /** GET /recipes/:id/steps — ordered list of steps with formatted photo URLs */
     async findByRecipeId(recipeId: string) {
       const recipe = await prisma.recipe.findUnique({
         where: { id: recipeId },
@@ -24,13 +64,15 @@ export function createStepService(prisma: PrismaClient) {
       });
       if (!recipe) throw new NotFoundError('Recipe not found');
 
-      return prisma.step.findMany({
+      const steps = await prisma.step.findMany({
         where: { recipe_id: recipeId },
         include: { photos: { orderBy: { sort_order: 'asc' } } },
         orderBy: { sort_order: 'asc' },
       });
+      return steps.map(formatStep);
     },
 
+    /** POST /recipes/:id/steps — create a new step (photos are empty on creation) */
     async create(
       recipeId: string,
       authorId: string,
@@ -39,7 +81,7 @@ export function createStepService(prisma: PrismaClient) {
     ) {
       await assertRecipeOwner(recipeId, authorId, isAdmin);
 
-      return prisma.step.create({
+      const step = await prisma.step.create({
         data: {
           recipe_id: recipeId,
           sort_order: input.sort_order,
@@ -49,8 +91,10 @@ export function createStepService(prisma: PrismaClient) {
         },
         include: { photos: true },
       });
+      return formatStep(step);
     },
 
+    /** PUT /recipes/:id/steps/:step_id — partial update of a step */
     async update(
       recipeId: string,
       stepId: string,
@@ -65,7 +109,7 @@ export function createStepService(prisma: PrismaClient) {
       });
       if (!step) throw new UnprocessableError('Step does not belong to this recipe');
 
-      return prisma.step.update({
+      const updated = await prisma.step.update({
         where: { id: stepId },
         data: {
           ...(input.sort_order !== undefined && { sort_order: input.sort_order }),
@@ -75,8 +119,10 @@ export function createStepService(prisma: PrismaClient) {
         },
         include: { photos: true },
       });
+      return formatStep(updated);
     },
 
+    /** DELETE /recipes/:id/steps/:step_id */
     async delete(recipeId: string, stepId: string, authorId: string, isAdmin: boolean) {
       await assertRecipeOwner(recipeId, authorId, isAdmin);
 
@@ -88,6 +134,7 @@ export function createStepService(prisma: PrismaClient) {
       await prisma.step.delete({ where: { id: stepId } });
     },
 
+    /** PATCH /recipes/:id/steps/reorder — two-phase atomic reorder */
     async reorder(
       recipeId: string,
       authorId: string,
@@ -97,14 +144,14 @@ export function createStepService(prisma: PrismaClient) {
       await assertRecipeOwner(recipeId, authorId, isAdmin);
 
       await prisma.$transaction(async (tx) => {
-        // Shift to high values first to avoid unique constraint conflicts
+        // Phase 1: shift to high values to avoid UNIQUE constraint violations
         for (const { id, sort_order } of orders) {
           await tx.step.updateMany({
             where: { id, recipe_id: recipeId },
             data: { sort_order: sort_order + 100000 },
           });
         }
-        // Then set final values
+        // Phase 2: set final values
         for (const { id, sort_order } of orders) {
           await tx.step.updateMany({
             where: { id, recipe_id: recipeId },
@@ -113,11 +160,12 @@ export function createStepService(prisma: PrismaClient) {
         }
       });
 
-      return prisma.step.findMany({
+      const steps = await prisma.step.findMany({
         where: { recipe_id: recipeId },
         include: { photos: { orderBy: { sort_order: 'asc' } } },
         orderBy: { sort_order: 'asc' },
       });
+      return steps.map(formatStep);
     },
   };
 }

@@ -538,6 +538,14 @@ describe('E2E: регистрация → создание рецепта → к
     expect(steps[0].timer_sec).toBe(480);
     expect(steps[0].photos).toHaveLength(1);
 
+    // Photo must contain url/thumb_url (not raw s3_key) — spec §3.7
+    const photo = steps[0].photos[0];
+    expect(photo).toHaveProperty('url');
+    expect(photo).toHaveProperty('thumb_url');
+    expect(photo).not.toHaveProperty('s3_key');
+    expect(photo.url).toContain('images/e2e-img-uuid/full.jpg');
+    expect(photo.thumb_url).toContain('images/e2e-img-uuid/thumb.jpg');
+
     // Verify step 2
     expect(steps[1].sort_order).toBe(2);
     expect(steps[1].timer_sec).toBeNull();

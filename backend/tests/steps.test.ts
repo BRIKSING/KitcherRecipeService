@@ -163,7 +163,7 @@ describe('GET /recipes/:id/steps', () => {
     expect(body[0].timer_sec).toBe(480);
   });
 
-  it('returns steps with photo objects when step has photos', async () => {
+  it('returns steps with photo objects — url/thumb_url instead of raw s3_key', async () => {
     mockPrismaRecipe.findUnique.mockResolvedValue({ id: RECIPE_ID });
     mockPrismaStep.findMany.mockResolvedValue([stepWithPhoto]);
 
@@ -175,7 +175,15 @@ describe('GET /recipes/:id/steps', () => {
     expect(res.statusCode).toBe(200);
     const steps = res.json();
     expect(steps[0].photos).toHaveLength(1);
-    expect(steps[0].photos[0].s3_key).toBe('images/test-uuid/full.jpg');
+
+    const photo = steps[0].photos[0];
+    // Spec §3.7: photos must expose url, NOT raw s3_key
+    expect(photo).toHaveProperty('url');
+    expect(photo).toHaveProperty('thumb_url');
+    expect(photo).not.toHaveProperty('s3_key');
+    expect(photo.url).toContain('images/test-uuid/full.jpg');
+    expect(photo.thumb_url).toContain('images/test-uuid/thumb.jpg');
+    expect(photo.sort_order).toBe(0);
   });
 
   it('returns empty array when recipe has no steps', async () => {
