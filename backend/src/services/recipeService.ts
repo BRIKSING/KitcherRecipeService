@@ -9,6 +9,15 @@ function buildImageUrl(key: string | null | undefined): string | null {
   return `${config.S3_PUBLIC_URL}/${key}`;
 }
 
+/**
+ * Derives the thumbnail URL from a full-size S3 key.
+ * Mirrors the logic in stepService.ts so GET /recipes/:id returns the same
+ * photo format (url + thumb_url) as GET /recipes/:id/steps (spec §3.7).
+ */
+function buildThumbUrl(fullKey: string): string {
+  return `${config.S3_PUBLIC_URL}/${fullKey.replace('/full.jpg', '/thumb.jpg')}`;
+}
+
 const recipeInclude = {
   author: { select: { id: true, username: true } },
   category: true,
@@ -52,6 +61,7 @@ function formatRecipe(recipe: any) {
       photos: step.photos.map((photo: any) => ({
         id: photo.id,
         url: buildImageUrl(photo.s3_key),
+        thumb_url: photo.s3_key ? buildThumbUrl(photo.s3_key) : null,
         sort_order: photo.sort_order,
       })),
     })),

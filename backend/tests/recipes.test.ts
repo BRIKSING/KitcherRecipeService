@@ -367,6 +367,34 @@ describe('GET /recipes/:id', () => {
     expect(body).toHaveProperty('steps');
   });
 
+  it('returns step photos with url AND thumb_url — consistent with GET /recipes/:id/steps (spec §3.7)', async () => {
+    const recipeWithPhoto = {
+      ...baseRecipe,
+      steps: [
+        {
+          ...baseStep,
+          photos: [
+            { id: 'photo-uuid-1', step_id: STEP_ID, s3_key: 'images/test-uuid/full.jpg', sort_order: 0 },
+          ],
+        },
+      ],
+    };
+    mockPrismaRecipe.findFirst.mockResolvedValue(recipeWithPhoto);
+
+    const res = await app.inject({ method: 'GET', url: `/recipes/${RECIPE_ID}` });
+
+    expect(res.statusCode).toBe(200);
+    const photo = res.json().steps[0].photos[0];
+
+    // Both url and thumb_url must be present (same format as GET /recipes/:id/steps)
+    expect(photo).toHaveProperty('url');
+    expect(photo).toHaveProperty('thumb_url');
+    expect(photo).not.toHaveProperty('s3_key');
+    expect(photo.url).toContain('images/test-uuid/full.jpg');
+    expect(photo.thumb_url).toContain('images/test-uuid/thumb.jpg');
+    expect(photo.sort_order).toBe(0);
+  });
+
   it('returns 404 for unknown recipe', async () => {
     mockPrismaRecipe.findFirst.mockResolvedValue(null);
 

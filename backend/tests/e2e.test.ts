@@ -503,7 +503,15 @@ describe('E2E: регистрация → создание рецепта → к
     expect(body.steps[0].title).toBe('Boil pasta');
     expect(body.steps[0].timer_sec).toBe(480);
     expect(body.steps[0].photos).toHaveLength(1);
-    expect(body.steps[0].photos[0].url).toContain('images/e2e-img-uuid/full.jpg');
+
+    // Step photos must expose url + thumb_url (consistent with GET /recipes/:id/steps, spec §3.7)
+    const photo = body.steps[0].photos[0];
+    expect(photo).toHaveProperty('url');
+    expect(photo).toHaveProperty('thumb_url');
+    expect(photo).not.toHaveProperty('s3_key');
+    expect(photo.url).toContain('images/e2e-img-uuid/full.jpg');
+    expect(photo.thumb_url).toContain('images/e2e-img-uuid/thumb.jpg');
+
     expect(body.ingredients).toHaveLength(2);
     expect(body.author.username).toBe('chef_e2e');
   });
