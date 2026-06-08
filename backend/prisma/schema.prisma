@@ -59,6 +59,8 @@ model Recipe {
   @@index([category_id])
   @@index([is_published])
   @@index([created_at(sort: Desc)])
+  // FTS INDEX (SPEC §3.3): GIN tsvector over (title, description) is created via raw SQL
+  // in migration 20260101000001_add_recipes_fts_index — Prisma cannot express it natively.
   @@map("recipes")
 }
 
