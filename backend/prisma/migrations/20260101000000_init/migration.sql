@@ -165,3 +165,13 @@ ALTER TABLE "step_photos" ADD CONSTRAINT "step_photos_step_id_fkey" FOREIGN KEY 
 
 -- AddForeignKey
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- CheckConstraint (spec §3.3 data model: positive integer fields)
+ALTER TABLE "recipes" ADD CONSTRAINT "recipes_cook_time_min_check" CHECK ("cook_time_min" > 0);
+ALTER TABLE "recipes" ADD CONSTRAINT "recipes_servings_check" CHECK ("servings" > 0);
+ALTER TABLE "steps" ADD CONSTRAINT "steps_timer_sec_check" CHECK ("timer_sec" IS NULL OR "timer_sec" > 0);
+
+-- CreateIndex (spec §3.3: FTS tsvector index over title + description)
+-- Expression must match recipeService.findAll() exactly so the planner uses this index.
+CREATE INDEX "recipes_fts_idx" ON "recipes"
+  USING GIN (to_tsvector('simple', coalesce("title", '') || ' ' || coalesce("description", '')));
