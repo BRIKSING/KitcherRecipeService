@@ -59,6 +59,8 @@ model Recipe {
   @@index([category_id])
   @@index([is_published])
   @@index([created_at(sort: Desc)])
+  // FTS GIN-индекс (tsvector по title + description, спец §3.3) создаётся вручную
+  // в миграции 20260101000000_init: Prisma не выражает GIN-индексы по выражению.
   @@map("recipes")
 }
 

@@ -142,6 +142,10 @@ CREATE INDEX "refresh_tokens_user_id_idx" ON "refresh_tokens"("user_id");
 -- CreateIndex
 CREATE INDEX "refresh_tokens_token_hash_idx" ON "refresh_tokens"("token_hash");
 
+-- CreateIndex (Full-text search per spec §3.3: tsvector по title + description)
+-- Expression matches the query used in recipeService.findAll so the planner can use this index.
+CREATE INDEX "recipes_fts_idx" ON "recipes" USING GIN (to_tsvector('simple', coalesce("title", '') || ' ' || coalesce("description", '')));
+
 -- AddForeignKey
 ALTER TABLE "recipes" ADD CONSTRAINT "recipes_author_id_fkey" FOREIGN KEY ("author_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
