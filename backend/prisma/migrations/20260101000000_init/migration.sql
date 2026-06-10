@@ -165,3 +165,15 @@ ALTER TABLE "step_photos" ADD CONSTRAINT "step_photos_step_id_fkey" FOREIGN KEY 
 
 -- AddForeignKey
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- CheckConstraint: positive numeric fields (spec §3.3)
+-- Prisma не моделирует CHECK-констрейнты в schema.prisma, поэтому задаём их вручную.
+ALTER TABLE "recipes" ADD CONSTRAINT "recipes_cook_time_min_check" CHECK ("cook_time_min" > 0);
+ALTER TABLE "recipes" ADD CONSTRAINT "recipes_servings_check" CHECK ("servings" > 0);
+ALTER TABLE "steps" ADD CONSTRAINT "steps_timer_sec_check" CHECK ("timer_sec" IS NULL OR "timer_sec" > 0);
+
+-- FTS Index: tsvector по (title, description) (spec §3.3)
+-- Выражение должно точно совпадать с запросом в recipeService.findAll,
+-- иначе планировщик PostgreSQL не сможет использовать индекс.
+CREATE INDEX "recipes_fts_idx" ON "recipes"
+  USING GIN (to_tsvector('simple', coalesce("title", '') || ' ' || coalesce("description", '')));
