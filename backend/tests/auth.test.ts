@@ -1,5 +1,6 @@
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 
 // Declare mock objects that are hoisted safely
 const mockPrismaUser = vi.hoisted(() => ({
@@ -25,13 +26,19 @@ const mockBcrypt = vi.hoisted(() => ({
   compare: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('@prisma/client', () => ({
-  PrismaClient: vi.fn().mockImplementation(() => ({
-    ...mockPrismaBase,
-    user: mockPrismaUser,
-    refreshToken: mockPrismaRefreshToken,
-  })),
-}));
+vi.mock('@prisma/client', async () => {
+  // Keep the real Prisma namespace so `Prisma.PrismaClientKnownRequestError`
+  // and its `instanceof` checks behave identically in service and tests.
+  const actual = await vi.importActual<typeof import('@prisma/client')>('@prisma/client');
+  return {
+    ...actual,
+    PrismaClient: vi.fn().mockImplementation(() => ({
+      ...mockPrismaBase,
+      user: mockPrismaUser,
+      refreshToken: mockPrismaRefreshToken,
+    })),
+  };
+});
 
 vi.mock('bcrypt', () => ({
   default: mockBcrypt,
@@ -135,6 +142,26 @@ describe('POST /auth/register', () => {
       method: 'POST',
       url: '/auth/register',
       payload: { email: 'new@example.com', username: 'chefuser', password: 'secret123' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
+  });
+
+  it('returns 409 on a unique-constraint race (P2002) at create time', async () => {
+    // Pre-check passes, but the DB unique index rejects the concurrent duplicate.
+    mockPrismaUser.findFirst.mockResolvedValue(null);
+    const p2002 = new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+      code: 'P2002',
+      clientVersion: '5.22.0',
+      meta: { target: ['email'] },
+    });
+    mockPrismaUser.create.mockRejectedValue(p2002);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: 'chef@example.com', username: 'chefuser', password: 'secret123' },
     });
 
     expect(res.statusCode).toBe(409);

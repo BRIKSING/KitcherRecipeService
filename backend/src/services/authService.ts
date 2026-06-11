@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import { createHash, randomUUID } from 'crypto';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { JwtPayload } from '../plugins/jwt.js';
 import { ConflictError, UnauthorizedError } from '../utils/errors.js';
 import type { RegisterBody, LoginBody, AuthResponse } from '../schemas/auth.js';
@@ -66,9 +66,23 @@ export function createAuthService(
 
       const password_hash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
 
-      const user = await prisma.user.create({
-        data: { email: input.email, username: input.username, password_hash },
-      });
+      let user;
+      try {
+        user = await prisma.user.create({
+          data: { email: input.email, username: input.username, password_hash },
+        });
+      } catch (err) {
+        // Concurrent registration race: the unique index rejects the duplicate
+        // even though the pre-check passed. Map it to 409 per spec §3.11.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          const target = err.meta?.target;
+          const field = Array.isArray(target) ? target.join(', ') : String(target ?? '');
+          throw new ConflictError(
+            field.includes('username') ? 'Username is already taken' : 'Email is already taken',
+          );
+        }
+        throw err;
+      }
 
       const tokens = await issueTokens(user.id, user.username, user.is_admin);
 
