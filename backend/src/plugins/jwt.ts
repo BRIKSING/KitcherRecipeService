@@ -1,6 +1,6 @@
 import fp from 'fastify-plugin';
 import fastifyJwt from '@fastify/jwt';
-import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyPluginAsync } from 'fastify';
 import { config } from '../config.js';
 
 export interface JwtPayload {
@@ -16,26 +16,15 @@ declare module '@fastify/jwt' {
   }
 }
 
-declare module 'fastify' {
-  interface FastifyInstance {
-    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-  }
-}
-
+// Registers @fastify/jwt, providing `request.jwtVerify()` and `fastify.jwt.sign()`.
+// Access-token verification as a preHandler lives in middleware/authenticate.ts
+// (single source of truth) — do not duplicate it here.
 const jwtPlugin: FastifyPluginAsync = fp(async (fastify) => {
   fastify.register(fastifyJwt, {
     secret: config.JWT_SECRET,
     sign: {
       expiresIn: config.JWT_ACCESS_EXPIRES_IN,
     },
-  });
-
-  fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      await request.jwtVerify();
-    } catch {
-      reply.status(401).send({ detail: 'Invalid or expired token', code: 'UNAUTHORIZED' });
-    }
   });
 });
 
