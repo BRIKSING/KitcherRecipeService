@@ -141,6 +141,27 @@ describe('POST /auth/register', () => {
     expect(res.json().code).toBe('CONFLICT');
   });
 
+  it('returns 409 when a concurrent insert violates the unique constraint (P2002)', async () => {
+    // findFirst passes (no existing user), but create races against a
+    // concurrent registration and hits the unique constraint.
+    mockPrismaUser.findFirst.mockResolvedValue(null);
+    mockPrismaUser.create.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), {
+        code: 'P2002',
+        meta: { target: ['username'] },
+      }),
+    );
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: { email: 'chef@example.com', username: 'chefuser', password: 'secret123' },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
+  });
+
   it('returns 400 for invalid email', async () => {
     const res = await app.inject({
       method: 'POST',

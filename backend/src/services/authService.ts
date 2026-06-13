@@ -12,6 +12,19 @@ function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 
+// Duck-typed P2002 detection so the service stays decoupled from the concrete
+// Prisma client (and works under the mocked client used in tests).
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: string }).code === 'P2002';
+}
+
+function uniqueViolationTarget(err: unknown): string[] {
+  const target = (err as { meta?: { target?: unknown } }).meta?.target;
+  if (Array.isArray(target)) return target.map(String);
+  if (typeof target === 'string') return [target];
+  return [];
+}
+
 function getRefreshTokenExpiresAt(): Date {
   const str = config.JWT_REFRESH_EXPIRES_IN;
   const match = str.match(/^(\d+)([smhd])$/);
@@ -66,9 +79,24 @@ export function createAuthService(
 
       const password_hash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
 
-      const user = await prisma.user.create({
-        data: { email: input.email, username: input.username, password_hash },
-      });
+      let user;
+      try {
+        user = await prisma.user.create({
+          data: { email: input.email, username: input.username, password_hash },
+        });
+      } catch (err) {
+        // Race condition: a concurrent request inserted the same email/username
+        // between the findFirst check and create. Map the unique-constraint
+        // violation (Prisma P2002) to a 409 instead of a 500 (see §3.11).
+        if (isUniqueViolation(err)) {
+          const target = uniqueViolationTarget(err);
+          if (target.includes('username')) {
+            throw new ConflictError('Username is already taken');
+          }
+          throw new ConflictError('Email is already taken');
+        }
+        throw err;
+      }
 
       const tokens = await issueTokens(user.id, user.username, user.is_admin);
 
