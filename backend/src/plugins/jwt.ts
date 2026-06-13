@@ -2,6 +2,7 @@ import fp from 'fastify-plugin';
 import fastifyJwt from '@fastify/jwt';
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { config } from '../config.js';
+import { authenticate } from '../middleware/authenticate.js';
 
 export interface JwtPayload {
   user_id: string;
@@ -30,13 +31,10 @@ const jwtPlugin: FastifyPluginAsync = fp(async (fastify) => {
     },
   });
 
-  fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      await request.jwtVerify();
-    } catch {
-      reply.status(401).send({ detail: 'Invalid or expired token', code: 'UNAUTHORIZED' });
-    }
-  });
+  // Single source of truth for access-token verification: the shared
+  // middleware/authenticate.ts. Exposed as a decorator so routes may use
+  // either `fastify.authenticate` or the imported `authenticate` preHandler.
+  fastify.decorate('authenticate', authenticate);
 });
 
 export default jwtPlugin;
