@@ -1,6 +1,6 @@
 import fp from 'fastify-plugin';
 import fastifyJwt from '@fastify/jwt';
-import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import { FastifyPluginAsync } from 'fastify';
 import { config } from '../config.js';
 
 export interface JwtPayload {
@@ -16,26 +16,14 @@ declare module '@fastify/jwt' {
   }
 }
 
-declare module 'fastify' {
-  interface FastifyInstance {
-    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
-  }
-}
-
+// Token verification is handled by the shared `middleware/authenticate.ts`
+// preHandler, which is the single source of truth used by all routes.
 const jwtPlugin: FastifyPluginAsync = fp(async (fastify) => {
   fastify.register(fastifyJwt, {
     secret: config.JWT_SECRET,
     sign: {
       expiresIn: config.JWT_ACCESS_EXPIRES_IN,
     },
-  });
-
-  fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
-    try {
-      await request.jwtVerify();
-    } catch {
-      reply.status(401).send({ detail: 'Invalid or expired token', code: 'UNAUTHORIZED' });
-    }
   });
 });
 
