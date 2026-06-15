@@ -1,9 +1,10 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { UnauthorizedError } from '../utils/errors.js';
 
-export async function authenticate(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+export async function authenticate(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
   try {
     await request.jwtVerify();
   } catch {
-    reply.status(401).send({ detail: 'Invalid or expired token', code: 'UNAUTHORIZED' });
+    throw new UnauthorizedError('Invalid or expired token');
   }
 }

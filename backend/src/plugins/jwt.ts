@@ -2,6 +2,7 @@ import fp from 'fastify-plugin';
 import fastifyJwt from '@fastify/jwt';
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { config } from '../config.js';
+import { UnauthorizedError } from '../utils/errors.js';
 
 export interface JwtPayload {
   user_id: string;
@@ -30,11 +31,11 @@ const jwtPlugin: FastifyPluginAsync = fp(async (fastify) => {
     },
   });
 
-  fastify.decorate('authenticate', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.decorate('authenticate', async (request: FastifyRequest, _reply: FastifyReply) => {
     try {
       await request.jwtVerify();
     } catch {
-      reply.status(401).send({ detail: 'Invalid or expired token', code: 'UNAUTHORIZED' });
+      throw new UnauthorizedError('Invalid or expired token');
     }
   });
 });
