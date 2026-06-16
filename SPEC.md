@@ -548,7 +548,7 @@ docker compose exec api npm run test                  # тесты (через d
 
 ### Этап 3 — Бэкенд: рецепты, шаги, ингредиенты
 
-- [x] Описать Zod-схемы для Recipe, Step, Ingredient (`schemas/`)
+- [y] Описать Zod-схемы для Recipe, Step, Ingredient (`schemas/`)
 - [x] Реализовать `recipeService.ts` (CRUD + publish)
 - [x] Реализовать `stepService.ts` (CRUD + reorder)
 - [x] Реализовать роутер `routes/recipes.ts` (7 эндпоинтов)
