@@ -1,7 +1,21 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from '../config.js';
-import { NotFoundError, ForbiddenError, UnprocessableError } from '../utils/errors.js';
+import { NotFoundError, ForbiddenError, UnprocessableError, ConflictError } from '../utils/errors.js';
 import type { CreateStepInput, UpdateStepInput, ReorderStepsInput } from '../schemas/step.js';
+
+/**
+ * Detects a Prisma unique-constraint violation (error code P2002) via duck
+ * typing rather than `instanceof Prisma.PrismaClientKnownRequestError`, so it
+ * works both in production and under the mocked Prisma client used in tests.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2002'
+  );
+}
 
 // ── Photo URL helpers ─────────────────────────────────────────────────────────
 
@@ -81,17 +95,25 @@ export function createStepService(prisma: PrismaClient) {
     ) {
       await assertRecipeOwner(recipeId, authorId, isAdmin);
 
-      const step = await prisma.step.create({
-        data: {
-          recipe_id: recipeId,
-          sort_order: input.sort_order,
-          title: input.title,
-          description: input.description,
-          timer_sec: input.timer_sec ?? null,
-        },
-        include: { photos: true },
-      });
-      return formatStep(step);
+      try {
+        const step = await prisma.step.create({
+          data: {
+            recipe_id: recipeId,
+            sort_order: input.sort_order,
+            title: input.title,
+            description: input.description,
+            timer_sec: input.timer_sec ?? null,
+          },
+          include: { photos: true },
+        });
+        return formatStep(step);
+      } catch (err) {
+        // UNIQUE(recipe_id, sort_order) violation → 409 per spec §3.11
+        if (isUniqueViolation(err)) {
+          throw new ConflictError('A step with this sort_order already exists in the recipe');
+        }
+        throw err;
+      }
     },
 
     /** PUT /recipes/:id/steps/:step_id — partial update of a step */
@@ -109,17 +131,25 @@ export function createStepService(prisma: PrismaClient) {
       });
       if (!step) throw new UnprocessableError('Step does not belong to this recipe');
 
-      const updated = await prisma.step.update({
-        where: { id: stepId },
-        data: {
-          ...(input.sort_order !== undefined && { sort_order: input.sort_order }),
-          ...(input.title !== undefined && { title: input.title }),
-          ...(input.description !== undefined && { description: input.description }),
-          ...(input.timer_sec !== undefined && { timer_sec: input.timer_sec }),
-        },
-        include: { photos: true },
-      });
-      return formatStep(updated);
+      try {
+        const updated = await prisma.step.update({
+          where: { id: stepId },
+          data: {
+            ...(input.sort_order !== undefined && { sort_order: input.sort_order }),
+            ...(input.title !== undefined && { title: input.title }),
+            ...(input.description !== undefined && { description: input.description }),
+            ...(input.timer_sec !== undefined && { timer_sec: input.timer_sec }),
+          },
+          include: { photos: true },
+        });
+        return formatStep(updated);
+      } catch (err) {
+        // UNIQUE(recipe_id, sort_order) violation → 409 per spec §3.11
+        if (isUniqueViolation(err)) {
+          throw new ConflictError('A step with this sort_order already exists in the recipe');
+        }
+        throw err;
+      }
     },
 
     /** DELETE /recipes/:id/steps/:step_id */

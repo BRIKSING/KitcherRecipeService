@@ -321,6 +321,21 @@ describe('POST /recipes/:id/steps', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
+  it('returns 409 when sort_order already exists (UNIQUE violation, spec §3.11)', async () => {
+    mockPrismaRecipe.findUnique.mockResolvedValue({ author_id: OWNER_ID });
+    mockPrismaStep.create.mockRejectedValue({ code: 'P2002' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/recipes/${RECIPE_ID}/steps`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: minimalStep,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
+  });
+
   it('returns 400 when title is missing', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -409,6 +424,22 @@ describe('PUT /recipes/:id/steps/:step_id', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().timer_sec).toBe(600);
+  });
+
+  it('returns 409 when updated sort_order collides (UNIQUE violation, spec §3.11)', async () => {
+    mockPrismaRecipe.findUnique.mockResolvedValue({ author_id: OWNER_ID });
+    mockPrismaStep.findFirst.mockResolvedValue(baseStep);
+    mockPrismaStep.update.mockRejectedValue({ code: 'P2002' });
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/recipes/${RECIPE_ID}/steps/${STEP_ID}`,
+      headers: { authorization: `Bearer ${ownerToken}` },
+      payload: { sort_order: 2 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
   });
 
   it('admin can update a step on any recipe', async () => {
