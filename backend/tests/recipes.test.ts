@@ -403,6 +403,60 @@ describe('GET /recipes/:id', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().code).toBe('NOT_FOUND');
   });
+
+  it('returns 404 for a draft to anonymous user', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue({ ...baseRecipe, is_published: false });
+
+    const res = await app.inject({ method: 'GET', url: `/recipes/${RECIPE_ID}` });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('NOT_FOUND');
+  });
+
+  it('lets the author view their own draft (for editing/publishing)', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue({ ...baseRecipe, is_published: false });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().is_published).toBe(false);
+  });
+
+  it('returns 404 for another user trying to view a draft', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue({
+      ...baseRecipe,
+      author_id: OTHER_USER_ID,
+      is_published: false,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('lets an admin view any draft', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue({
+      ...baseRecipe,
+      author_id: OTHER_USER_ID,
+      is_published: false,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+  });
 });
 
 // ─── PUT /recipes/:id ─────────────────────────────────────────────────────────

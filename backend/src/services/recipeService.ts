@@ -147,13 +147,21 @@ export function createRecipeService(prisma: PrismaClient) {
       };
     },
 
-    async findById(id: string) {
+    async findById(id: string, requester?: { user_id: string; is_admin: boolean }) {
       const recipe = await prisma.recipe.findFirst({
-        where: { id, is_published: true },
+        where: { id },
         include: recipeInclude,
       });
 
       if (!recipe) throw new NotFoundError('Recipe not found');
+
+      // Drafts are visible only to their author or an admin; otherwise behave as
+      // if the recipe does not exist (avoid leaking existence of unpublished data).
+      if (!recipe.is_published) {
+        const isOwner =
+          requester && (recipe.author_id === requester.user_id || requester.is_admin);
+        if (!isOwner) throw new NotFoundError('Recipe not found');
+      }
 
       return formatRecipe(recipe);
     },

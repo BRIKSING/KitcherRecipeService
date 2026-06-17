@@ -71,11 +71,21 @@ const recipesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /recipes/:id
+  // GET /recipes/:id — optional auth: a present, valid token lets the author/admin
+  // view their own draft; anonymous (or invalid token) sees only published recipes.
   fastify.get('/recipes/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
+    let requester: { user_id: string; is_admin: boolean } | undefined;
+    if (request.headers.authorization) {
+      try {
+        await request.jwtVerify();
+        requester = { user_id: request.user.user_id, is_admin: request.user.is_admin };
+      } catch {
+        // Invalid/expired token → treat as anonymous (published-only access).
+      }
+    }
     try {
-      return reply.send(await svc.findById(id));
+      return reply.send(await svc.findById(id, requester));
     } catch (err) {
       if (err instanceof AppError) return sendApp(reply, err);
       throw err;
