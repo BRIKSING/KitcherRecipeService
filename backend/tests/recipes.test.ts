@@ -644,6 +644,21 @@ describe('POST /recipes/:id/steps', () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  it('returns 409 when sort_order conflicts with an existing step (DB unique violation)', async () => {
+    mockPrismaRecipe.findUnique.mockResolvedValue({ author_id: USER_ID });
+    mockPrismaStep.create.mockRejectedValue({ code: 'P2002' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/recipes/${RECIPE_ID}/steps`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: validStep,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
+  });
 });
 
 // ─── PUT /recipes/:id/steps/:step_id ─────────────────────────────────────────
