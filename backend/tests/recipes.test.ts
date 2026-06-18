@@ -319,6 +319,24 @@ describe('POST /recipes', () => {
     expect(res.statusCode).toBe(201);
   });
 
+  it('assigns sequential sort_order to ingredients sent without one', async () => {
+    mockPrismaRecipe.create.mockResolvedValue({ ...baseRecipe, is_published: false });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recipes',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {
+        ...validBody,
+        ingredients: [{ name: 'Спагетти' }, { name: 'Яйца' }, { name: 'Сыр' }],
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const created = mockPrismaRecipe.create.mock.calls[0][0].data.ingredients.create;
+    expect(created.map((i: { sort_order: number }) => i.sort_order)).toEqual([0, 1, 2]);
+  });
+
   it('returns 401 without token', async () => {
     const res = await app.inject({
       method: 'POST',
