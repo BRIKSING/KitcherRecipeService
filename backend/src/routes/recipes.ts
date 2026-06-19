@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { ZodError } from 'zod';
-import { authenticate } from '../middleware/authenticate.js';
+import { authenticate, optionalAuthenticate } from '../middleware/authenticate.js';
 import { createRecipeService } from '../services/recipeService.js';
 import { createRecipeSchema, updateRecipeSchema, recipeFiltersSchema } from '../schemas/recipe.js';
 import { paginationSchema } from '../schemas/common.js';
@@ -71,11 +71,15 @@ const recipesRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // GET /recipes/:id
-  fastify.get('/recipes/:id', async (request, reply) => {
+  // GET /recipes/:id — public for published recipes; the author (or an admin)
+  // may also read their own unpublished draft, hence optional authentication.
+  fastify.get('/recipes/:id', { preHandler: [optionalAuthenticate] }, async (request, reply) => {
     const { id } = request.params as { id: string };
+    const requester = request.user
+      ? { user_id: request.user.user_id, is_admin: request.user.is_admin }
+      : undefined;
     try {
-      return reply.send(await svc.findById(id));
+      return reply.send(await svc.findById(id, requester));
     } catch (err) {
       if (err instanceof AppError) return sendApp(reply, err);
       throw err;

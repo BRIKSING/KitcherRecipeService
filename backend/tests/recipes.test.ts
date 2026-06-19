@@ -403,6 +403,73 @@ describe('GET /recipes/:id', () => {
     expect(res.statusCode).toBe(404);
     expect(res.json().code).toBe('NOT_FOUND');
   });
+
+  it('lets the author read their own unpublished draft', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue({ ...baseRecipe, is_published: false });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().is_published).toBe(false);
+  });
+
+  it('lets an admin read any unpublished draft', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue({
+      ...baseRecipe,
+      author_id: OTHER_USER_ID,
+      is_published: false,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${adminToken}` },
+    });
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('hides an unpublished draft from anonymous users (404)', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue({ ...baseRecipe, is_published: false });
+
+    const res = await app.inject({ method: 'GET', url: `/recipes/${RECIPE_ID}` });
+
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('NOT_FOUND');
+  });
+
+  it('hides an unpublished draft from other authenticated users (404)', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue({
+      ...baseRecipe,
+      author_id: OTHER_USER_ID,
+      is_published: false,
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('ignores an invalid token and still serves a published recipe', async () => {
+    mockPrismaRecipe.findFirst.mockResolvedValue(baseRecipe);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: 'Bearer not-a-valid-token' },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().is_published).toBe(true);
+  });
 });
 
 // ─── PUT /recipes/:id ─────────────────────────────────────────────────────────

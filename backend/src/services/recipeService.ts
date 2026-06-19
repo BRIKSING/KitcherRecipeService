@@ -147,13 +147,24 @@ export function createRecipeService(prisma: PrismaClient) {
       };
     },
 
-    async findById(id: string) {
+    async findById(id: string, requester?: { user_id: string; is_admin: boolean }) {
       const recipe = await prisma.recipe.findFirst({
-        where: { id, is_published: true },
+        where: { id },
         include: recipeInclude,
       });
 
       if (!recipe) throw new NotFoundError('Recipe not found');
+
+      // Published recipes are public. Unpublished drafts are visible only to
+      // their author (or an admin) so the create → edit → publish flow can
+      // re-open a draft via GET /recipes/:id (spec §3.5). Hide otherwise to
+      // avoid leaking draft existence — 404 rather than 403.
+      if (!recipe.is_published) {
+        const isOwner =
+          requester != null &&
+          (recipe.author_id === requester.user_id || requester.is_admin);
+        if (!isOwner) throw new NotFoundError('Recipe not found');
+      }
 
       return formatRecipe(recipe);
     },
