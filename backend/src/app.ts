@@ -14,7 +14,7 @@ import uploadRoutes from './routes/upload.js';
 import photosRoutes from './routes/photos.js';
 import categoriesRoutes from './routes/categories.js';
 import tagsRoutes from './routes/tags.js';
-import { AppError, isFastifyError } from './utils/errors.js';
+import { AppError, isFastifyError, isPrismaKnownError, mapPrismaError } from './utils/errors.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -62,6 +62,13 @@ export async function buildApp(): Promise<FastifyInstance> {
       }
       if (error.validation) {
         return reply.status(400).send({ detail: error.message, code: 'VALIDATION_ERROR' });
+      }
+    }
+
+    if (isPrismaKnownError(error)) {
+      const mapped = mapPrismaError(error);
+      if (mapped) {
+        return reply.status(mapped.statusCode).send({ detail: mapped.detail, code: mapped.code });
       }
     }
 

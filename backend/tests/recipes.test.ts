@@ -348,6 +348,24 @@ describe('POST /recipes', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('returns 422 when category_id/tag_id references a missing row (Prisma P2003)', async () => {
+    const fkError = Object.assign(new Error('Foreign key constraint failed'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2003',
+    });
+    mockPrismaRecipe.create.mockRejectedValue(fkError);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/recipes',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { ...validBody, category_id: 'a0000000-0000-0000-0000-0000000000ff' },
+    });
+
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('UNPROCESSABLE');
+  });
 });
 
 // ─── GET /recipes/:id ─────────────────────────────────────────────────────────
@@ -643,6 +661,25 @@ describe('POST /recipes/:id/steps', () => {
       payload: validStep,
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 409 on duplicate sort_order (UNIQUE recipe_id+sort_order, Prisma P2002)', async () => {
+    mockPrismaRecipe.findUnique.mockResolvedValue({ author_id: USER_ID });
+    const uniqueError = Object.assign(new Error('Unique constraint failed'), {
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2002',
+    });
+    mockPrismaStep.create.mockRejectedValue(uniqueError);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/recipes/${RECIPE_ID}/steps`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: validStep,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
   });
 });
 
