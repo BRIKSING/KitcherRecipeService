@@ -50,3 +50,21 @@ export class UnprocessableError extends AppError {
 export function isFastifyError(err: unknown): err is FastifyError {
   return typeof err === 'object' && err !== null && 'statusCode' in err;
 }
+
+/**
+ * Structural type guard for Prisma's PrismaClientKnownRequestError.
+ *
+ * Detected by shape (name + Pxxxx code) rather than `instanceof
+ * Prisma.PrismaClientKnownRequestError` so it keeps working when tests mock
+ * the `@prisma/client` module (the mock does not export the `Prisma`
+ * namespace).
+ */
+export function isPrismaKnownError(err: unknown): err is { code: string; meta?: unknown } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { name?: string }).name === 'PrismaClientKnownRequestError' &&
+    typeof (err as { code?: unknown }).code === 'string' &&
+    /^P\d{4}$/.test((err as { code: string }).code)
+  );
+}

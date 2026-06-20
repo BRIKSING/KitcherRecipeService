@@ -14,7 +14,7 @@ import uploadRoutes from './routes/upload.js';
 import photosRoutes from './routes/photos.js';
 import categoriesRoutes from './routes/categories.js';
 import tagsRoutes from './routes/tags.js';
-import { AppError, isFastifyError } from './utils/errors.js';
+import { AppError, isFastifyError, isPrismaKnownError } from './utils/errors.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
   const fastify = Fastify({
@@ -62,6 +62,22 @@ export async function buildApp(): Promise<FastifyInstance> {
       }
       if (error.validation) {
         return reply.status(400).send({ detail: error.message, code: 'VALIDATION_ERROR' });
+      }
+    }
+
+    // Map Prisma constraint errors to the HTTP codes required by spec §3.11
+    // (e.g. invalid category_id/tag_id on POST /recipes, duplicate step
+    // sort_order on POST /recipes/:id/steps) instead of falling through to 500.
+    if (isPrismaKnownError(error)) {
+      switch (error.code) {
+        case 'P2002': // unique constraint violation
+          return reply.status(409).send({ detail: 'Resource already exists', code: 'CONFLICT' });
+        case 'P2003': // foreign key constraint violation
+          return reply
+            .status(422)
+            .send({ detail: 'Referenced resource does not exist', code: 'UNPROCESSABLE' });
+        case 'P2025': // record required for the operation was not found
+          return reply.status(404).send({ detail: 'Resource not found', code: 'NOT_FOUND' });
       }
     }
 
