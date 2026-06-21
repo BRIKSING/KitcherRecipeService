@@ -63,11 +63,12 @@ vi.mock('bcrypt', () => ({
   compare: vi.fn(),
 }));
 
+const mockS3Send = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+
 vi.mock('@aws-sdk/client-s3', () => ({
-  S3Client: vi.fn().mockImplementation(() => ({
-    send: vi.fn().mockResolvedValue({}),
-  })),
+  S3Client: vi.fn().mockImplementation(() => ({ send: mockS3Send })),
   HeadBucketCommand: vi.fn(),
+  DeleteObjectCommand: vi.fn().mockImplementation((args) => args),
 }));
 
 import { buildApp } from '../src/app.js';
@@ -132,6 +133,7 @@ beforeEach(() => {
   mockPrismaBase.$queryRaw.mockResolvedValue([]);
   mockPrismaBase.$transaction.mockImplementation(async (fn: any) => fn(mockTx));
   mockTx.step.updateMany.mockResolvedValue({ count: 1 });
+  mockS3Send.mockResolvedValue({});
 });
 
 // ─── GET /recipes ─────────────────────────────────────────────────────────────
@@ -495,6 +497,28 @@ describe('DELETE /recipes/:id', () => {
 
     expect(res.statusCode).toBe(204);
     expect(mockPrismaRecipe.delete).toHaveBeenCalledWith({ where: { id: RECIPE_ID } });
+  });
+
+  it('removes both full and thumb S3 objects for cover_image', async () => {
+    mockPrismaRecipe.findUnique.mockResolvedValue({
+      ...baseRecipe,
+      cover_image: 'images/cover-uuid/full.jpg',
+      steps: [],
+    });
+    mockPrismaRecipe.delete.mockResolvedValue(baseRecipe);
+
+    const res = await app.inject({
+      method: 'DELETE',
+      url: `/recipes/${RECIPE_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+
+    expect(res.statusCode).toBe(204);
+    // cover full.jpg + cover thumb.jpg
+    expect(mockS3Send).toHaveBeenCalledTimes(2);
+    const deletedKeys = mockS3Send.mock.calls.map((c: any) => c[0].Key);
+    expect(deletedKeys).toContain('images/cover-uuid/full.jpg');
+    expect(deletedKeys).toContain('images/cover-uuid/thumb.jpg');
   });
 
   it('returns 403 for non-owner', async () => {

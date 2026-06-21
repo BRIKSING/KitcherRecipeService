@@ -3,7 +3,9 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   HeadBucketCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl as presignUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config.js';
 
 const s3Client = new S3Client({
@@ -47,6 +49,19 @@ export const storageService = {
 
   async headBucket(): Promise<void> {
     await s3Client.send(new HeadBucketCommand({ Bucket: config.S3_BUCKET }));
+  },
+
+  /**
+   * Generates a time-limited presigned GET URL for a stored object.
+   * Useful for serving private objects without exposing bucket credentials
+   * (spec §3.2 storageService: upload / delete / getSignedUrl).
+   */
+  async getSignedUrl(key: string, expiresInSec = 3600): Promise<string> {
+    return presignUrl(
+      s3Client,
+      new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }),
+      { expiresIn: expiresInSec },
+    );
   },
 
   buildPublicUrl(key: string): string {
