@@ -1,7 +1,29 @@
 import { PrismaClient } from '@prisma/client';
 import { config } from '../config.js';
-import { NotFoundError, ForbiddenError, UnprocessableError } from '../utils/errors.js';
+import {
+  NotFoundError,
+  ForbiddenError,
+  UnprocessableError,
+  ConflictError,
+} from '../utils/errors.js';
 import type { CreateStepInput, UpdateStepInput, ReorderStepsInput } from '../schemas/step.js';
+
+/**
+ * Runs a Prisma write and translates the unique-constraint violation
+ * (P2002 on Step's @@unique([recipe_id, sort_order])) into a 409 ConflictError,
+ * matching the error contract of spec §3.11 and the handling already done for
+ * categories/tags. Without this, a duplicate sort_order surfaces as a 500.
+ */
+async function catchDuplicateSortOrder<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if ((err as { code?: string })?.code === 'P2002') {
+      throw new ConflictError('A step with this sort_order already exists in the recipe');
+    }
+    throw err;
+  }
+}
 
 // ── Photo URL helpers ─────────────────────────────────────────────────────────
 
@@ -81,16 +103,18 @@ export function createStepService(prisma: PrismaClient) {
     ) {
       await assertRecipeOwner(recipeId, authorId, isAdmin);
 
-      const step = await prisma.step.create({
-        data: {
-          recipe_id: recipeId,
-          sort_order: input.sort_order,
-          title: input.title,
-          description: input.description,
-          timer_sec: input.timer_sec ?? null,
-        },
-        include: { photos: true },
-      });
+      const step = await catchDuplicateSortOrder(() =>
+        prisma.step.create({
+          data: {
+            recipe_id: recipeId,
+            sort_order: input.sort_order,
+            title: input.title,
+            description: input.description,
+            timer_sec: input.timer_sec ?? null,
+          },
+          include: { photos: true },
+        }),
+      );
       return formatStep(step);
     },
 
@@ -109,16 +133,18 @@ export function createStepService(prisma: PrismaClient) {
       });
       if (!step) throw new UnprocessableError('Step does not belong to this recipe');
 
-      const updated = await prisma.step.update({
-        where: { id: stepId },
-        data: {
-          ...(input.sort_order !== undefined && { sort_order: input.sort_order }),
-          ...(input.title !== undefined && { title: input.title }),
-          ...(input.description !== undefined && { description: input.description }),
-          ...(input.timer_sec !== undefined && { timer_sec: input.timer_sec }),
-        },
-        include: { photos: true },
-      });
+      const updated = await catchDuplicateSortOrder(() =>
+        prisma.step.update({
+          where: { id: stepId },
+          data: {
+            ...(input.sort_order !== undefined && { sort_order: input.sort_order }),
+            ...(input.title !== undefined && { title: input.title }),
+            ...(input.description !== undefined && { description: input.description }),
+            ...(input.timer_sec !== undefined && { timer_sec: input.timer_sec }),
+          },
+          include: { photos: true },
+        }),
+      );
       return formatStep(updated);
     },
 
@@ -143,22 +169,24 @@ export function createStepService(prisma: PrismaClient) {
     ) {
       await assertRecipeOwner(recipeId, authorId, isAdmin);
 
-      await prisma.$transaction(async (tx) => {
-        // Phase 1: shift to high values to avoid UNIQUE constraint violations
-        for (const { id, sort_order } of orders) {
-          await tx.step.updateMany({
-            where: { id, recipe_id: recipeId },
-            data: { sort_order: sort_order + 100000 },
-          });
-        }
-        // Phase 2: set final values
-        for (const { id, sort_order } of orders) {
-          await tx.step.updateMany({
-            where: { id, recipe_id: recipeId },
-            data: { sort_order },
-          });
-        }
-      });
+      await catchDuplicateSortOrder(() =>
+        prisma.$transaction(async (tx) => {
+          // Phase 1: shift to high values to avoid UNIQUE constraint violations
+          for (const { id, sort_order } of orders) {
+            await tx.step.updateMany({
+              where: { id, recipe_id: recipeId },
+              data: { sort_order: sort_order + 100000 },
+            });
+          }
+          // Phase 2: set final values (duplicate target orders → P2002 → 409)
+          for (const { id, sort_order } of orders) {
+            await tx.step.updateMany({
+              where: { id, recipe_id: recipeId },
+              data: { sort_order },
+            });
+          }
+        }),
+      );
 
       const steps = await prisma.step.findMany({
         where: { recipe_id: recipeId },

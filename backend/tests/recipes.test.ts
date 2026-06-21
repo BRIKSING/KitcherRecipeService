@@ -644,6 +644,21 @@ describe('POST /recipes/:id/steps', () => {
     });
     expect(res.statusCode).toBe(401);
   });
+
+  it('returns 409 when sort_order already exists (P2002)', async () => {
+    mockPrismaRecipe.findUnique.mockResolvedValue({ author_id: USER_ID });
+    mockPrismaStep.create.mockRejectedValue({ code: 'P2002' });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/recipes/${RECIPE_ID}/steps`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: validStep,
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
+  });
 });
 
 // ─── PUT /recipes/:id/steps/:step_id ─────────────────────────────────────────
@@ -678,6 +693,22 @@ describe('PUT /recipes/:id/steps/:step_id', () => {
 
     expect(res.statusCode).toBe(422);
     expect(res.json().code).toBe('UNPROCESSABLE');
+  });
+
+  it('returns 409 when updating to an existing sort_order (P2002)', async () => {
+    mockPrismaRecipe.findUnique.mockResolvedValue({ author_id: USER_ID });
+    mockPrismaStep.findFirst.mockResolvedValue(baseStep);
+    mockPrismaStep.update.mockRejectedValue({ code: 'P2002' });
+
+    const res = await app.inject({
+      method: 'PUT',
+      url: `/recipes/${RECIPE_ID}/steps/${STEP_ID}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { sort_order: 2 },
+    });
+
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CONFLICT');
   });
 });
 
