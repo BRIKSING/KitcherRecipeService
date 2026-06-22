@@ -2,8 +2,10 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadBucketCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl as awsGetSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { config } from '../config.js';
 
 const s3Client = new S3Client({
@@ -47,6 +49,18 @@ export const storageService = {
 
   async headBucket(): Promise<void> {
     await s3Client.send(new HeadBucketCommand({ Bucket: config.S3_BUCKET }));
+  },
+
+  /**
+   * Generates a time-limited presigned URL for reading a private S3 object.
+   * Use for buckets that are not publicly readable; `expiresIn` is in seconds.
+   */
+  async getSignedUrl(key: string, expiresIn = 3600): Promise<string> {
+    return awsGetSignedUrl(
+      s3Client,
+      new GetObjectCommand({ Bucket: config.S3_BUCKET, Key: key }),
+      { expiresIn },
+    );
   },
 
   buildPublicUrl(key: string): string {
