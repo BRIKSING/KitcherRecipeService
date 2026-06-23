@@ -3,7 +3,7 @@ import { ZodError } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
 import { isAdmin } from '../middleware/isAdmin.js';
 import { createCategorySchema } from '../schemas/category.js';
-import { AppError, ConflictError, NotFoundError } from '../utils/errors.js';
+import { ConflictError, NotFoundError } from '../utils/errors.js';
 
 const categoriesRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /categories — list all categories
