@@ -252,6 +252,7 @@ describe('POST /steps/:step_id/photos', () => {
     title: 'Step 1',
     description: 'Do something',
     timer_sec: null,
+    recipe: { author_id: 'user-uuid-1' },
   };
 
   const validPhoto = {
@@ -306,6 +307,24 @@ describe('POST /steps/:step_id/photos', () => {
     expect(res.json().code).toBe('NOT_FOUND');
   });
 
+  it('returns 403 when caller is not the recipe owner', async () => {
+    const token = makeToken();
+    mockPrismaStep.findUnique.mockResolvedValue({
+      ...validStep,
+      recipe: { author_id: 'someone-else' },
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/steps/${stepId}/photos`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { key: s3Key },
+    });
+
+    expect(res.statusCode).toBe(403);
+    expect(res.json().code).toBe('FORBIDDEN');
+  });
+
   it('returns 422 when step already has 5 photos', async () => {
     const token = makeToken();
     mockPrismaStep.findUnique.mockResolvedValue(validStep);
@@ -354,6 +373,10 @@ describe('DELETE /steps/:step_id/photos/:photo_id', () => {
 
   it('returns 204 and deletes S3 objects on success', async () => {
     const token = makeToken();
+    mockPrismaStep.findUnique.mockResolvedValue({
+      id: stepId,
+      recipe: { author_id: 'user-uuid-1' },
+    });
     mockPrismaStepPhoto.findFirst.mockResolvedValue({
       id: photoId,
       step_id: stepId,
@@ -375,6 +398,10 @@ describe('DELETE /steps/:step_id/photos/:photo_id', () => {
 
   it('returns 404 when photo does not exist', async () => {
     const token = makeToken();
+    mockPrismaStep.findUnique.mockResolvedValue({
+      id: stepId,
+      recipe: { author_id: 'user-uuid-1' },
+    });
     mockPrismaStepPhoto.findFirst.mockResolvedValue(null);
 
     const res = await app.inject({
@@ -400,6 +427,7 @@ describe('PATCH /steps/:step_id/photos/reorder', () => {
     title: 'Step 1',
     description: 'Do something',
     timer_sec: null,
+    recipe: { author_id: 'user-uuid-1' },
   };
 
   it('returns 401 without auth', async () => {

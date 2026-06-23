@@ -44,7 +44,7 @@ const photosRoutes: FastifyPluginAsync = async (fastify) => {
         throw err;
       }
       try {
-        await svc.reorder(step_id, body);
+        await svc.reorder(step_id, request.user.user_id, request.user.is_admin, body);
         return reply.status(204).send();
       } catch (err) {
         if (err instanceof AppError) return sendApp(reply, err);
@@ -67,7 +67,12 @@ const photosRoutes: FastifyPluginAsync = async (fastify) => {
         throw err;
       }
       try {
-        const result = await svc.upload(step_id, body.key);
+        const result = await svc.upload(
+          step_id,
+          request.user.user_id,
+          request.user.is_admin,
+          body.key,
+        );
         return reply.status(201).send(result);
       } catch (err) {
         if (err instanceof AppError) return sendApp(reply, err);
@@ -83,7 +88,7 @@ const photosRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { step_id, photo_id } = request.params as { step_id: string; photo_id: string };
       try {
-        await svc.delete(step_id, photo_id);
+        await svc.delete(step_id, photo_id, request.user.user_id, request.user.is_admin);
         return reply.status(204).send();
       } catch (err) {
         if (err instanceof AppError) return sendApp(reply, err);

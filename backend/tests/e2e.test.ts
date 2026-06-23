@@ -396,7 +396,10 @@ describe('E2E: регистрация → создание рецепта → к
   // ── 8. Attach photo to step 1 ─────────────────────────────────────────────
 
   it('8. POST /steps/:step_id/photos — attaches uploaded photo to first step', async () => {
-    mockPrismaStep.findUnique.mockResolvedValue(makeStep(STEP1_ID, 1, 'Boil pasta', '...', 480));
+    mockPrismaStep.findUnique.mockResolvedValue({
+      ...makeStep(STEP1_ID, 1, 'Boil pasta', '...', 480),
+      recipe: { author_id: USER_ID },
+    });
     mockPrismaStepPhoto.count.mockResolvedValue(0);
     mockPrismaStepPhoto.create.mockResolvedValue({
       id: PHOTO_ID,
