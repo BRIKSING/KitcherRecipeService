@@ -15,7 +15,7 @@ const categories = [
   { name: 'Напитки', slug: 'napitki' },
   { name: 'Соусы', slug: 'sousy' },
   { name: 'Вегетарианское', slug: 'vegetarianskoe' },
-  { name: 'Морепродукты', slug: 'moreproduky' },
+  { name: 'Морепродукты', slug: 'moreprodukty' },
   { name: 'Мясные блюда', slug: 'myasnye-blyuda' },
   { name: 'Гриль и барбекю', slug: 'gril-i-barbeku' },
 ];
