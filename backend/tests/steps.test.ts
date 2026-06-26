@@ -161,6 +161,12 @@ describe('GET /recipes/:id/steps', () => {
     expect(body[0].title).toBe('Сварить пасту');
     expect(body[0].sort_order).toBe(1);
     expect(body[0].timer_sec).toBe(480);
+    // Spec §3.7: step exposes only the public shape — no internal columns leak,
+    // matching the steps array of GET /recipes/:id (recipeService.formatRecipe).
+    expect(body[0]).not.toHaveProperty('recipe_id');
+    expect(Object.keys(body[0]).sort()).toEqual(
+      ['description', 'id', 'photos', 'sort_order', 'timer_sec', 'title'].sort(),
+    );
   });
 
   it('returns steps with photo objects — url/thumb_url instead of raw s3_key', async () => {

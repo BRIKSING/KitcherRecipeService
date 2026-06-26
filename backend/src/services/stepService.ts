@@ -51,12 +51,21 @@ function formatStepPhoto(photo: any) {
 
 /**
  * Transform a raw Step DB row (with nested photos) to the public API format.
- * Replaces s3_key with url + thumb_url in every photo.
+ * Emits only the fields defined by spec §3.7 ({ id, sort_order, title,
+ * description, timer_sec, photos }) instead of spreading the raw Prisma row —
+ * this keeps internal columns (recipe_id) out of the response and makes
+ * GET /recipes/:id/steps identical in shape to the steps array of
+ * GET /recipes/:id (recipeService.formatRecipe). Each photo exposes
+ * url + thumb_url rather than the raw s3_key.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatStep(step: any) {
   return {
-    ...step,
+    id: step.id,
+    sort_order: step.sort_order,
+    title: step.title,
+    description: step.description,
+    timer_sec: step.timer_sec,
     photos: Array.isArray(step.photos) ? step.photos.map(formatStepPhoto) : [],
   };
 }
