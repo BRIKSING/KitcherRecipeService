@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { config } from '../config.js';
+import { storageService } from './storageService.js';
 import {
   NotFoundError,
   ForbiddenError,
@@ -27,12 +27,8 @@ async function catchDuplicateSortOrder<T>(fn: () => Promise<T>): Promise<T> {
 
 // ── Photo URL helpers ─────────────────────────────────────────────────────────
 
-function buildPhotoUrl(s3Key: string): string {
-  return `${config.S3_PUBLIC_URL}/${s3Key}`;
-}
-
 function buildThumbUrl(fullKey: string): string {
-  return buildPhotoUrl(fullKey.replace('/full.jpg', '/thumb.jpg'));
+  return storageService.buildPublicUrl(fullKey.replace('/full.jpg', '/thumb.jpg'));
 }
 
 /**
@@ -43,7 +39,7 @@ function buildThumbUrl(fullKey: string): string {
 function formatStepPhoto(photo: any) {
   return {
     id: photo.id,
-    url: buildPhotoUrl(photo.s3_key),
+    url: storageService.buildPublicUrl(photo.s3_key),
     thumb_url: buildThumbUrl(photo.s3_key),
     sort_order: photo.sort_order,
   };
