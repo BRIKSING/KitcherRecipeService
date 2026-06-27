@@ -51,12 +51,19 @@ function formatStepPhoto(photo: any) {
 
 /**
  * Transform a raw Step DB row (with nested photos) to the public API format.
- * Replaces s3_key with url + thumb_url in every photo.
+ * Replaces s3_key with url + thumb_url in every photo and exposes exactly the
+ * step shape of spec §3.7 — the same fields recipeService emits for steps in
+ * GET /recipes/:id, so both endpoints stay byte-for-byte uniform (no internal
+ * recipe_id leak).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function formatStep(step: any) {
   return {
-    ...step,
+    id: step.id,
+    sort_order: step.sort_order,
+    title: step.title,
+    description: step.description,
+    timer_sec: step.timer_sec,
     photos: Array.isArray(step.photos) ? step.photos.map(formatStepPhoto) : [],
   };
 }
