@@ -1,3 +1,17 @@
+/**
+ * Сборка Fastify-приложения (Этап 1 — фундамент бэкенда).
+ *
+ * `buildApp()` создаёт инстанс Fastify, регистрирует кросс-срезовые плагины,
+ * устанавливает глобальный обработчик ошибок и подключает все роутеры.
+ * Функция вынесена отдельно от запуска сервера (`server.ts`), чтобы её можно
+ * было использовать в тестах (`tests/setup.ts`) без открытия TCP-порта.
+ *
+ * Порядок регистрации важен:
+ *   1. CORS и helmet — задают политику источников и security-заголовки (§3.4).
+ *   2. Инфраструктурные плагины: prisma, jwt, multipart, rateLimit.
+ *   3. Глобальный error handler — единый формат ошибок `{ detail, code }` (§3.7, §3.11).
+ *   4. Роутеры функциональных модулей.
+ */
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -17,6 +31,8 @@ import tagsRoutes from './routes/tags.js';
 import { AppError, isFastifyError } from './utils/errors.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
+  // pino встроен в Fastify. В тестах логи отключаем (silent), в dev —
+  // включаем человекочитаемый pino-pretty, в production — структурный JSON.
   const fastify = Fastify({
     logger: {
       level: config.NODE_ENV === 'test' ? 'silent' : 'info',
@@ -41,6 +57,8 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(multipartPlugin);
   await fastify.register(rateLimitPlugin);
 
+  // Глобальный error handler: приводит любые ошибки к единому JSON-формату
+  // { detail, code } и корректным HTTP-кодам из таблицы §3.11.
   fastify.setErrorHandler((error, _request, reply) => {
     if (error instanceof AppError) {
       return reply.status(error.statusCode).send({ detail: error.detail, code: error.code });

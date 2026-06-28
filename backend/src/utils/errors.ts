@@ -1,5 +1,18 @@
+/**
+ * Кастомные HTTP-ошибки (Этап 1 — фундамент бэкенда).
+ *
+ * `AppError` — базовый класс прикладной ошибки, несущий HTTP-статус, текст
+ * (`detail`) и машиночитаемый `code`. Сервисы и роутеры бросают наследников
+ * (`NotFoundError`, `ForbiddenError`, ...), а глобальный error handler в
+ * `app.ts` превращает их в JSON `{ detail, code }` с нужным кодом ответа.
+ * Соответствие кодов ситуациям задано таблицей §3.11 ТЗ.
+ *
+ * `isFastifyError` — type guard для ошибок самого Fastify/плагинов (валидация,
+ * rate limit, превышение размера файла), у которых статус приходит в `statusCode`.
+ */
 import { FastifyError } from 'fastify';
 
+/** Базовая прикладная ошибка: статус + человекочитаемый detail + машинный code. */
 export class AppError extends Error {
   constructor(
     public readonly statusCode: number,

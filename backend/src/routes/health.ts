@@ -1,3 +1,15 @@
+/**
+ * Route: GET /health (Этап 1 — фундамент бэкенда).
+ *
+ * Healthcheck для оркестратора/мониторинга. Проверяет две внешние зависимости:
+ *   - БД — лёгким запросом `SELECT 1` через Prisma;
+ *   - S3/MinIO — `HeadBucketCommand` по целевому бакету.
+ *
+ * Если обе проверки прошли — отдаёт 200 и `{ status: { db: 'ok', s3: 'ok' } }`.
+ * Если хоть одна упала — статус соответствующего компонента становится 'error',
+ * а HTTP-код меняется на 503 (Service Unavailable). Эндпоинт не требует
+ * аутентификации. Соответствует §3.5 ТЗ.
+ */
 import { FastifyPluginAsync } from 'fastify';
 import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import { config } from '../config.js';
