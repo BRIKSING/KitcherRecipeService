@@ -1,3 +1,16 @@
+// Схема данных Kitchen (Этап 1 — фундамент).
+//
+// Описывает все модели приложения и материализуется в БД первой миграцией
+// 20260101000000_init. Соответствует SPEC.md §3.3. Соглашения:
+//   - PK — UUID (@default(uuid()));
+//   - имена таблиц приведены к snake_case через @@map;
+//   - каскадные удаления (onDelete: Cascade) на дочерних сущностях рецепта
+//     и токенах пользователя; category_id у рецепта — SetNull;
+//   - индексы под фильтры/сортировку GET /recipes (author_id, category_id,
+//     is_published, created_at DESC) и под поиск refresh-токенов.
+// FTS-индекс (tsvector по title/description) добавляется отдельной миграцией
+// 20260101000001_recipe_fts_index на Этапе 3.
+
 generator client {
   provider = "prisma-client-js"
 }

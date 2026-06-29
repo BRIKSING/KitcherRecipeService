@@ -1,3 +1,14 @@
+/**
+ * Plugin: JWT (Этап 1 — фундамент, наполняется на Этапе 2).
+ *
+ * Регистрирует @fastify/jwt с секретом и TTL access-токена из конфигурации,
+ * объявляет тип полезной нагрузки токена (`JwtPayload`: user_id, username,
+ * is_admin) и декорирует инстанс preHandler-ом `authenticate`. Декоратор
+ * вызывает `request.jwtVerify()` и при любой ошибке (нет/просрочен/невалиден
+ * токен) бросает `UnauthorizedError` (401), который ловит глобальный error
+ * handler. На Этапе 1 закладывается инфраструктура; сами эндпоинты и
+ * выпуск токенов добавляются в authService на Этапе 2.
+ */
 import fp from 'fastify-plugin';
 import fastifyJwt from '@fastify/jwt';
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';

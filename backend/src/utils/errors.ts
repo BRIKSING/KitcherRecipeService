@@ -1,3 +1,16 @@
+/**
+ * Кастомные HTTP-ошибки (Этап 1 — фундамент).
+ *
+ * `AppError` — базовый класс доменных ошибок, несущий тройку
+ * (statusCode, detail, code). Глобальный error handler в `app.ts`
+ * распознаёт наследников `AppError` и отдаёт их клиенту в едином формате
+ * `{ detail, code }` (SPEC.md §3.7). Готовые наследники соответствуют
+ * таблице кодов ошибок SPEC.md §3.11: 401, 403, 404, 409, 400, 422.
+ *
+ * `isFastifyError` — type-guard для ошибок самого Fastify (валидация,
+ * rate-limit 429, multipart 413/415), которые обрабатываются отдельной
+ * веткой error handler-а.
+ */
 import { FastifyError } from 'fastify';
 
 export class AppError extends Error {

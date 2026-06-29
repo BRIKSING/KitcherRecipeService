@@ -1,3 +1,24 @@
+/**
+ * Сборка Fastify-приложения (Этап 1 — фундамент).
+ *
+ * `buildApp()` создаёт инстанс Fastify и регистрирует в строгом порядке:
+ *   1. Логирование pino (pino-pretty в dev, silent в test, json в prod).
+ *   2. Безопасность: CORS (@fastify/cors, origins из CORS_ORIGIN через запятую)
+ *      и security-заголовки (@fastify/helmet).
+ *   3. Инфраструктурные плагины: prisma, jwt, multipart, rateLimit.
+ *   4. Глобальный error handler — единая точка преобразования исключений
+ *      в JSON-формат ошибок `{ detail, code }` (см. SPEC.md §3.7, §3.11):
+ *        - AppError и наследники → их statusCode/detail/code;
+ *        - ошибки Fastify 429/413/415 и Zod-валидация (400) → коды по таблице;
+ *        - всё остальное логируется и отдаётся как 500 INTERNAL_ERROR.
+ *   5. Роуты доменов (health, auth, recipes, steps, upload, photos,
+ *      categories, tags).
+ *
+ * Функция используется как точкой входа `server.ts`, так и тестами
+ * (`tests/setup.ts`), что даёт идентичное окружение в проде и в тестах.
+ *
+ * @returns сконфигурированный, но ещё не слушающий порт FastifyInstance
+ */
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
