@@ -1,3 +1,11 @@
+/**
+ * Prisma-плагин (Этап 1 — фундамент).
+ *
+ * Создаёт единственный экземпляр PrismaClient на всё приложение, открывает
+ * соединение с PostgreSQL и декорирует Fastify свойством `fastify.prisma`,
+ * доступным во всех роутерах и сервисах. Соединение корректно закрывается на
+ * хуке `onClose` (graceful shutdown / завершение тестов).
+ */
 import fp from 'fastify-plugin';
 import { PrismaClient } from '@prisma/client';
 import { FastifyPluginAsync } from 'fastify';

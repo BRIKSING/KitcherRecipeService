@@ -1,3 +1,14 @@
+/**
+ * Healthcheck-эндпоинт `GET /health` (Этап 1 — фундамент).
+ *
+ * Проверяет два внешних зависимых сервиса:
+ *   - PostgreSQL — лёгким запросом `SELECT 1` через Prisma;
+ *   - S3/MinIO   — `HeadBucket` по целевому бакету.
+ *
+ * Возвращает `{ status: { db, s3 } }`. Если хотя бы одна проверка не прошла,
+ * HTTP-код становится 503 (Service Unavailable) — удобно для liveness/readiness
+ * проб в Docker/оркестраторе. Эндпоинт намеренно не требует аутентификации.
+ */
 import { FastifyPluginAsync } from 'fastify';
 import { HeadBucketCommand, S3Client } from '@aws-sdk/client-s3';
 import { config } from '../config.js';

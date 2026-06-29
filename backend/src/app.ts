@@ -1,3 +1,12 @@
+/**
+ * Фабрика Fastify-приложения (Этап 1 — фундамент).
+ *
+ * `buildApp()` создаёт инстанс Fastify, настраивает pino-логирование,
+ * регистрирует базовые плагины (CORS, helmet, prisma, jwt, multipart,
+ * rate-limit), устанавливает глобальный обработчик ошибок и подключает
+ * все роутеры. Вынесение сборки в отдельную функцию позволяет переиспользовать
+ * её в тестах (Vitest + supertest) без запуска реального HTTP-сервера.
+ */
 import Fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
@@ -17,6 +26,8 @@ import tagsRoutes from './routes/tags.js';
 import { AppError, isFastifyError } from './utils/errors.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
+  // pino-логирование встроено в Fastify: в тестах глушим вывод, в dev включаем
+  // человекочитаемый pino-pretty, в production — структурированный JSON.
   const fastify = Fastify({
     logger: {
       level: config.NODE_ENV === 'test' ? 'silent' : 'info',
@@ -26,6 +37,9 @@ export async function buildApp(): Promise<FastifyInstance> {
           : undefined,
     },
   });
+
+  // Security headers и CORS регистрируются первыми, чтобы применяться ко всем
+  // последующим маршрутам (см. §3.4 SPEC.md).
 
   await fastify.register(cors, {
     origin: config.CORS_ORIGIN.split(',').map((o) => o.trim()),
@@ -41,7 +55,10 @@ export async function buildApp(): Promise<FastifyInstance> {
   await fastify.register(multipartPlugin);
   await fastify.register(rateLimitPlugin);
 
+  // Глобальный обработчик ошибок приводит любой выброс к единому JSON-формату
+  // `{ detail, code }` (§3.7) и сопоставляет ошибки с HTTP-кодами из §3.11.
   fastify.setErrorHandler((error, _request, reply) => {
+    // Доменные ошибки (utils/errors.ts) уже несут statusCode/detail/code.
     if (error instanceof AppError) {
       return reply.status(error.statusCode).send({ detail: error.detail, code: error.code });
     }
@@ -65,6 +82,7 @@ export async function buildApp(): Promise<FastifyInstance> {
       }
     }
 
+    // Непредвиденные ошибки логируем и отдаём обобщённый 500 без утечки деталей.
     fastify.log.error(error);
     return reply.status(500).send({ detail: 'Internal server error', code: 'INTERNAL_ERROR' });
   });
