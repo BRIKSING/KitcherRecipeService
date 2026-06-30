@@ -548,15 +548,15 @@ docker compose exec api npm run test                  # тесты (через d
 
 ### Этап 3 — Бэкенд: рецепты, шаги, ингредиенты
 
-- [y] Описать Zod-схемы для Recipe, Step, Ingredient (`schemas/`)
-- [y] Реализовать `recipeService.ts` (CRUD + publish)
-- [y] Реализовать `stepService.ts` (CRUD + reorder)
-- [y] Реализовать роутер `routes/recipes.ts` (7 эндпоинтов)
-- [y] Реализовать роутер `routes/steps.ts` (5 эндпоинтов)
-- [y] Реализовать полнотекстовый поиск (PostgreSQL `tsvector` через Prisma `$queryRaw`)
-- [y] Реализовать пагинацию и фильтрацию `GET /recipes`
-- [y] Реализовать `GET /recipes/my` (черновики текущего пользователя)
-- [y] Написать тесты `tests/recipes.test.ts`
+- [d] Описать Zod-схемы для Recipe, Step, Ingredient (`schemas/`)
+- [d] Реализовать `recipeService.ts` (CRUD + publish)
+- [d] Реализовать `stepService.ts` (CRUD + reorder)
+- [d] Реализовать роутер `routes/recipes.ts` (7 эндпоинтов)
+- [d] Реализовать роутер `routes/steps.ts` (5 эндпоинтов)
+- [d] Реализовать полнотекстовый поиск (PostgreSQL `tsvector` через Prisma `$queryRaw`)
+- [d] Реализовать пагинацию и фильтрацию `GET /recipes`
+- [d] Реализовать `GET /recipes/my` (черновики текущего пользователя)
+- [d] Написать тесты `tests/recipes.test.ts`
 
 ### Этап 4 — Бэкенд: медиа и S3
 

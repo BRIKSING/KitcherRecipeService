@@ -336,3 +336,198 @@ Zod-схемами в обработчике; `refresh`/`logout` принима�
 неверном пароле / неизвестном или неактивном пользователе, 401 для
 отозванного/просроченного/ненайденного refresh-токена и при отсутствии
 заголовка, а также идемпотентность `logout`.
+
+---
+
+## Этап 3 — Бэкенд: рецепты, шаги, ингредиенты
+
+Основная доменная логика сервиса (§3.5–3.7): CRUD рецептов с вложенными
+ингредиентами и тегами, публикация, полнотекстовый поиск, пагинация и
+фильтрация списка, а также CRUD и переупорядочивание шагов рецепта. Все
+изменяющие операции требуют аутентификации и проверяют владение ресурсом
+(автор или admin).
+
+### Файлы этапа
+
+```
+backend/src/
+├── schemas/
+│   ├── recipe.ts        — Zod-схемы create/update + фильтры списка
+│   ├── step.ts          — Zod-схемы create/update + reorder
+│   ├── ingredient.ts    — Zod-схема вложенного ингредиента
+│   └── common.ts        — paginationSchema + типы PaginatedResponse/ErrorResponse
+├── services/
+│   ├── recipeService.ts — CRUD + publish + поиск/фильтры + формат ответа
+│   └── stepService.ts   — CRUD шагов + reorder + формат фото
+└── routes/
+    ├── recipes.ts       — 7 эндпоинтов /recipes
+    └── steps.ts         — 5 эндпоинтов /recipes/:id/steps
+backend/tests/recipes.test.ts — модульные тесты рецептов и шагов
+```
+
+### Zod-схемы
+
+**`schemas/recipe.ts`:**
+- `difficultyEnum` — `easy | medium | hard`, переиспользуется в фильтрах;
+- `createRecipeSchema` — `title` (1–300), необязательные `description`
+  (≤ 5000), `category_id` (UUID), `cover_image`; обязательные `difficulty`,
+  `cook_time_min` и `servings` (целые положительные, §3.3 CHECK `> 0`);
+  опциональные вложенные массивы `ingredients` и `tag_ids` (UUID) — рецепт
+  создаётся вместе со связями за один запрос;
+- `updateRecipeSchema` — `createRecipeSchema.partial()`: любое поле
+  необязательно (частичное обновление);
+- `recipeFiltersSchema` — параметры `GET /recipes` (§3.6). `tags` принимает
+  как одиночный UUID, так и массив (OR-логика). `max_time`, `page`,
+  `per_page` приводятся из строк query через `z.coerce.number()`; `page`
+  по умолчанию `1`, `per_page` — `20` с потолком `50`.
+
+**`schemas/ingredient.ts`** — `ingredientInputSchema`: `name` (1–200),
+необязательные `amount` (положительное число) и `unit` (≤ 50), `sort_order`
+(целое ≥ 0, по умолчанию `0`).
+
+**`schemas/step.ts`:**
+- `createStepSchema` — `sort_order` (целое положительное), `title` (1–200),
+  `description` (непустое), необязательный `timer_sec` (целое
+  положительное, §3.3 CHECK `> 0`);
+- `updateStepSchema` — `.partial()` для частичного обновления;
+- `reorderStepsSchema` — непустой массив `{ id (UUID), sort_order }`.
+
+**`schemas/common.ts`** — `paginationSchema` (используется в
+`GET /recipes/my`) и интерфейсы `PaginatedResponse<T>`
+(`items, total, page, per_page, pages`, §3.7) и `ErrorResponse`
+(`detail, code`).
+
+### Сервис рецептов (`services/recipeService.ts`)
+
+Фабрика `createRecipeService(prisma)`. Общий объект `recipeInclude`
+подгружает все связи (автор — только `id`/`username`, категория, теги,
+ингредиенты и шаги с фото, отсортированные по `sort_order`). Хелпер
+`formatRecipe` приводит запись БД к формату ответа §3.7: разворачивает
+join-таблицу тегов в плоский массив, превращает `Decimal` ингредиента в
+`number`, а ключи S3 — в абсолютные URL.
+
+Формирование URL изображений:
+- `buildImageUrl(key)` → `${S3_PUBLIC_URL}/${key}` (или `null`);
+- `buildThumbUrl(fullKey)` подменяет `/full.jpg` на `/thumb.jpg`. Поэтому
+  фото шагов внутри `GET /recipes/:id` возвращаются в формате
+  `{ id, url, thumb_url, sort_order }` — единообразно с
+  `GET /recipes/:id/steps` (см. Этап 11, §3.7), без утечки сырого `s3_key`.
+
+Операции:
+- **`create(authorId, input)`** — создаёт рецепт вместе с ингредиентами
+  (nested `create`, `sort_order` по индексу если не задан) и связями тегов;
+  возвращает отформатированный рецепт.
+- **`findAll(filters)`** — список **только опубликованных** рецептов
+  (`is_published: true`). Накладывает фильтры `category`, `difficulty`,
+  `max_time` (`cook_time_min <= max_time`), `author_id`, `tags` (через
+  `tags.some.tag_id.in`). При наличии `q` сначала выполняется
+  полнотекстовый поиск (см. ниже), его результаты ограничивают `where.id`.
+  `count` и `findMany` запускаются параллельно (`Promise.all`); сортировка —
+  `created_at DESC`, пагинация — `skip/take`.
+- **`findById(id)`** — один опубликованный рецепт со всеми связями; иначе
+  `NotFoundError` (404).
+- **`findMy(authorId, pagination)`** — рецепты текущего пользователя
+  **включая черновики** (`where: { author_id }`, без фильтра
+  `is_published`); та же пагинация и сортировка.
+- **`update(id, authorId, isAdmin, input)`** — проверяет существование
+  (404) и владение (403, если не автор и не admin). При передаче
+  `ingredients`/`tag_ids` связи пересоздаются (`deleteMany` + `create`);
+  отсутствие поля оставляет связи нетронутыми.
+- **`delete(id, authorId, isAdmin)`** — проверки 404/403; собирает ключи
+  S3 (обложка + все фото шагов, каждый в паре `full.jpg`/`thumb.jpg`),
+  удаляет рецепт (каскад чистит шаги/ингредиенты/фото в БД) и затем
+  удаляет объекты из S3 через `storageService.deleteMany` (см. Этап 4).
+- **`publish(id, authorId, isAdmin)`** — проверки 404/403; ставит
+  `is_published = true`.
+
+#### Полнотекстовый поиск (FTS)
+
+Поиск по `q` реализован сырым запросом Prisma `$queryRaw` к PostgreSQL:
+`to_tsvector('simple', title || ' ' || description)` сопоставляется с
+`plainto_tsquery('simple', q)` среди опубликованных рецептов. Запрос
+опирается на FTS-индекс из миграции `20260101000001_recipe_fts_index`
+(Этап 1). Возвращённые `id` подставляются в основной запрос как
+`where.id = { in: [...] }`, что сохраняет применение остальных фильтров,
+сортировки и пагинации.
+
+### Сервис шагов (`services/stepService.ts`)
+
+Фабрика `createStepService(prisma)`. Приватный `assertRecipeOwner`
+проверяет существование рецепта (404) и права (403) перед любой мутацией.
+Хелперы `formatStepPhoto`/`formatStep` приводят фото к формату
+`{ id, url, thumb_url, sort_order }` (§3.7).
+
+Обёртка `catchDuplicateSortOrder` перехватывает Prisma-ошибку `P2002`
+(нарушение `@@unique([recipe_id, sort_order])`) и превращает её в
+`ConflictError` (409) согласно §3.11 — иначе дубликат `sort_order`
+выдавал бы 500.
+
+Операции:
+- **`findByRecipeId(recipeId)`** — шаги рецепта по порядку (404, если
+  рецепта нет); фото внутри тоже отсортированы.
+- **`create(...)`** — после проверки прав создаёт шаг (фото изначально
+  пусто); дубликат `sort_order` → 409.
+- **`update(...)`** — проверка прав, затем проверка принадлежности шага
+  рецепту (`findFirst` по `id` + `recipe_id`; иначе `UnprocessableError`
+  422, §3.11); частичное обновление полей; дубликат `sort_order` → 409.
+- **`delete(...)`** — те же проверки 403/422; удаляет шаг.
+- **`reorder(...)`** — атомарное переупорядочивание в транзакции в две
+  фазы: сначала всем шагам присваивается `sort_order + 100000` (уход от
+  коллизий с UNIQUE), затем — финальные значения. Дубликаты целевых
+  порядков ловятся как 409. Возвращает обновлённый список шагов.
+
+### Роутеры
+
+Оба роутера используют общие хелперы `sendZod` (ошибка валидации Zod →
+400 `VALIDATION_ERROR`, поля собираются в `detail` через `;`) и `sendApp`
+(доменная `AppError` → её `statusCode`/`code`).
+
+**`routes/recipes.ts`** (7 эндпоинтов, §3.5):
+
+| Метод и путь | Auth | Тело / query | Успех |
+|---|---|---|---|
+| `GET /recipes` | нет | фильтры §3.6 | `200` пагинированный список |
+| `GET /recipes/my` | да | `page`, `per_page` | `200` (вкл. черновики) |
+| `POST /recipes` | да | `createRecipeSchema` | `201` рецепт |
+| `GET /recipes/:id` | нет | — | `200` рецепт (§3.7) |
+| `PUT /recipes/:id` | да | `updateRecipeSchema` | `200` рецепт |
+| `DELETE /recipes/:id` | да | — | `204` |
+| `POST /recipes/:id/publish` | да | — | `200` рецепт |
+
+Маршрут `GET /recipes/my` зарегистрирован **до** `GET /recipes/:id`, иначе
+литерал `my` был бы поглощён динамическим `:id`.
+
+**`routes/steps.ts`** (5 эндпоинтов, §3.5):
+
+| Метод и путь | Auth | Тело | Успех |
+|---|---|---|---|
+| `GET /recipes/:id/steps` | нет | — | `200` массив шагов |
+| `POST /recipes/:id/steps` | да | `createStepSchema` | `201` шаг |
+| `PATCH /recipes/:id/steps/reorder` | да | `[{ id, sort_order }]` | `200` список |
+| `PUT /recipes/:id/steps/:step_id` | да | `updateStepSchema` | `200` шаг |
+| `DELETE /recipes/:id/steps/:step_id` | да | — | `204` |
+
+Маршрут `PATCH .../steps/reorder` зарегистрирован **до** `.../steps/:step_id`,
+чтобы литерал `reorder` не воспринимался как идентификатор шага.
+
+### Сопоставление кодов ошибок (§3.11)
+
+| Код | Когда |
+|---|---|
+| `400 VALIDATION_ERROR` | невалидное тело/query (Zod), напр. `per_page > 50`, неверный `difficulty` |
+| `401 UNAUTHORIZED` | нет/невалиден access-токен на защищённых маршрутах |
+| `403 FORBIDDEN` | не автор рецепта и не admin |
+| `404 NOT_FOUND` | рецепт или (для шагов) родительский рецепт не найдены |
+| `409 CONFLICT` | дубликат `(recipe_id, sort_order)` при create/update/reorder шага |
+| `422 UNPROCESSABLE` | шаг не принадлежит указанному рецепту |
+
+### Тесты (`tests/recipes.test.ts`)
+
+Модульные тесты на Vitest поднимают приложение через `buildApp()` с
+замоканными Prisma, bcrypt и S3-клиентом. Покрывают оба роутера:
+пагинацию и каждый фильтр `GET /recipes` (`category`, `difficulty`,
+`max_time`, FTS по `q`), формирование `cover_image_url` и формата фото
+(`url` + `thumb_url`), черновики в `GET /recipes/my`, создание рецепта с
+ингредиентами и тегами, проверки прав (403 не-автор, доступ admin),
+404/401, а также шаги: создание/обновление/удаление, 409 на дубликат
+`sort_order` (P2002), 422 на чужой шаг и транзакционный reorder.
