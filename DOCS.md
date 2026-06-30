@@ -202,3 +202,137 @@ docker compose exec api npx prisma migrate deploy   # применить миг�
 docker compose exec api npx prisma db seed          # засеять категории
 curl http://localhost:3000/health                   # проверить статус БД и S3
 ```
+
+---
+
+## Этап 2 — Бэкенд: аутентификация
+
+Реализация аутентификации и базовой авторизации (§3.4): регистрация и вход
+по email/паролю, выдача пары токенов, обновление access-токена, выход с
+отзывом refresh-токена, а также middleware для защиты эндпоинтов и проверки
+прав администратора. Чувствительные маршруты `/auth/*` защищены rate
+limiting’ом.
+
+### Схема токенов
+
+Используются два типа токенов с разным назначением и временем жизни:
+
+| Токен | Тип | TTL | Где хранится | Содержимое |
+|---|---|---|---|---|
+| `access_token` | JWT, подписан `JWT_SECRET` | `JWT_ACCESS_EXPIRES_IN` (30m) | только у клиента | `user_id`, `username`, `is_admin` |
+| `refresh_token` | непрозрачный UUID | `JWT_REFRESH_EXPIRES_IN` (30d) | SHA-256-хэш в таблице `refresh_tokens` | — |
+
+Принцип: короткоживущий access-токен предъявляется на каждый защищённый
+запрос и не требует обращения к БД (проверяется подписью); долгоживущий
+refresh-токен позволяет получить новый access-токен и может быть отозван.
+В базе хранится **только хэш** refresh-токена (`crypto.createHash('sha256')`)
+— сырое значение знает лишь клиент, поэтому утечка содержимого БД не даёт
+действующих токенов.
+
+### Файлы этапа
+
+```
+backend/src/
+├── schemas/auth.ts             — Zod-схемы register/login + тип AuthResponse
+├── plugins/jwt.ts              — @fastify/jwt, тип JwtPayload, декоратор authenticate
+├── services/authService.ts     — register / login / refresh / logout
+├── routes/auth.ts              — 4 эндпоинта /auth/* + rate limit
+└── middleware/
+    ├── authenticate.ts         — preHandler: проверка access-токена
+    └── isAdmin.ts              — preHandler: проверка is_admin
+backend/tests/auth.test.ts      — модульные тесты эндпоинтов
+```
+
+### Zod-схемы (`schemas/auth.ts`)
+
+Валидируют тела запросов и при нарушении правил приводят к ответу 400
+`VALIDATION_ERROR`:
+
+- `registerBodySchema`: корректный `email`; `username` — 3–50 символов из
+  набора `[a-zA-Z0-9_]`; `password` — 8–100 символов;
+- `loginBodySchema`: корректный `email` и непустой `password`.
+
+Типы `RegisterBody` / `LoginBody` выводятся через `z.infer` и
+переиспользуются сервисом. Интерфейс `AuthResponse` фиксирует форму ответа:
+`access_token`, `refresh_token` и объект `user` (`id`, `email`, `username`,
+`is_admin`).
+
+### JWT-плагин (`plugins/jwt.ts`)
+
+Регистрирует `@fastify/jwt` с секретом `JWT_SECRET` и сроком подписи
+`JWT_ACCESS_EXPIRES_IN`. Тип полезной нагрузки `JwtPayload`
+(`user_id`, `username`, `is_admin`) расширяет типы `@fastify/jwt`, поэтому
+после верификации `request.user` строго типизирован.
+
+Плагин декорирует инстанс методом `fastify.authenticate` — preHandler,
+который вызывает `request.jwtVerify()` и при любой ошибке бросает
+`UnauthorizedError` (401). Подпись токенов наружу отдаётся через
+`fastify.jwt.sign` и передаётся в `authService` как функция — сервис не
+зависит от Fastify напрямую.
+
+### Сервис аутентификации (`services/authService.ts`)
+
+Фабрика `createAuthService(prisma, signToken)` возвращает четыре операции.
+Общий приватный помощник `issueTokens` создаёт пару токенов: подписывает JWT
+и сохраняет хэш нового refresh-токена в БД с вычисленным сроком истечения
+(`getRefreshTokenExpiresAt` разбирает форматы `s|m|h|d`).
+
+- **`register(input)`** — проверяет, что `email` и `username` не заняты
+  (иначе `ConflictError` 409 с уточнением, какое поле занято); хэширует
+  пароль bcrypt (`BCRYPT_ROUNDS = 10`); создаёт `User`; выдаёт пару токенов.
+- **`login(input)`** — находит пользователя по email; при отсутствии,
+  неактивности (`is_active = false`) или неверном пароле — единый ответ
+  `UnauthorizedError` (401) «Invalid email or password» (защита от
+  перечисления учётных записей); при успехе выдаёт пару токенов.
+- **`refresh(token)`** — ищет refresh-токен по его хэшу; отвергает
+  отозванный/просроченный токен и токен неактивного пользователя (401);
+  иначе выпускает **только** новый `access_token` (сам refresh-токен не
+  ротируется).
+- **`logout(token)`** — помечает `RefreshToken.revoked = true`. Идемпотентен:
+  неизвестный или уже отозванный токен не считается ошибкой.
+
+### Роутер (`routes/auth.ts`)
+
+Реализует четыре эндпоинта (§3.5). Тела `register`/`login` парсятся
+Zod-схемами в обработчике; `refresh`/`logout` принимают refresh-токен из
+заголовка `Authorization: Bearer <token>` (его отсутствие → 401
+`UNAUTHORIZED`). Доменные `AppError` конвертируются в `{ detail, code }` с
+соответствующим статусом.
+
+| Метод и путь | Тело / заголовок | Успех | Ошибки |
+|---|---|---|---|
+| `POST /auth/register` | `{ email, username, password }` | `201` + токены и `user` | 400, 409 |
+| `POST /auth/login` | `{ email, password }` | `200` + токены и `user` | 400, 401 |
+| `POST /auth/refresh` | `Bearer <refresh_token>` | `200` + `access_token` | 401 |
+| `POST /auth/logout` | `Bearer <refresh_token>` | `204` (без тела) | 401 |
+
+### Rate limiting на `/auth/*`
+
+На каждый auth-эндпоинт точечно навешан лимит **10 запросов в минуту на IP**
+через `config: { rateLimit: { max: 10, timeWindow: '1 minute' } }` (§3.4).
+Это возможно благодаря тому, что `@fastify/rate-limit` зарегистрирован в
+режиме `global: false` (Этап 1): глобально лимит выключен и включается лишь
+на чувствительных маршрутах. При превышении возвращается 429
+`RATE_LIMIT_EXCEEDED`.
+
+### Middleware авторизации
+
+- **`authenticate.ts`** — preHandler для защищённых маршрутов: верифицирует
+  access-токен из `Authorization: Bearer <access_token>` и заполняет
+  `request.user`; при отсутствии/невалидности/истечении токена бросает
+  `UnauthorizedError` (401). Дублирует декоратор `fastify.authenticate` как
+  отдельно импортируемую функцию.
+- **`isAdmin.ts`** — preHandler проверки прав: ставится в цепочку **после**
+  `authenticate` и пропускает запрос только при `request.user.is_admin`,
+  иначе `ForbiddenError` (403). Применяется на admin-only маршрутах
+  (например, `POST /categories`).
+
+### Тесты (`tests/auth.test.ts`)
+
+Модульные тесты на Vitest поднимают приложение через `buildApp()` с
+замоканными Prisma и bcrypt и проверяют все четыре эндпоинта: успешные
+сценарии и коды ошибок — 409 при занятых email/username, 400 на невалидных
+данных (email, длина пароля, недопустимые символы в username), 401 при
+неверном пароле / неизвестном или неактивном пользователе, 401 для
+отозванного/просроченного/ненайденного refresh-токена и при отсутствии
+заголовка, а также идемпотентность `logout`.

@@ -1,3 +1,17 @@
+/**
+ * Роутер аутентификации (Этап 2 — §3.5).
+ *
+ * Четыре эндпоинта: `POST /auth/register`, `/auth/login`, `/auth/refresh`,
+ * `/auth/logout`. Тела `register`/`login` валидируются Zod-схемами (ошибка →
+ * 400 `VALIDATION_ERROR`); `refresh`/`logout` принимают refresh-токен в
+ * заголовке `Authorization: Bearer <token>` (его отсутствие → 401).
+ *
+ * На каждый эндпоинт точечно навешан rate limit 10 запросов/мин на IP
+ * (§3.4) — `@fastify/rate-limit` работает в режиме `global: false`. Доменные
+ * `AppError` из сервиса конвертируются в `{ detail, code }` с нужным
+ * HTTP-кодом (§3.11). Коды успеха: register → 201, login/refresh → 200,
+ * logout → 204.
+ */
 import { FastifyPluginAsync } from 'fastify';
 import { ZodError } from 'zod';
 import { createAuthService } from '../services/authService.js';

@@ -1,3 +1,13 @@
+/**
+ * Zod-схемы аутентификации (Этап 2 — §3.4).
+ *
+ * Описывают и валидируют тела запросов `POST /auth/register` и
+ * `POST /auth/login`, а также форму ответа `AuthResponse`. Невалидные данные
+ * приводят к ответу 400 `VALIDATION_ERROR` (см. routes/auth.ts). Правила:
+ * корректный email; username 3–50 символов из `[a-zA-Z0-9_]`; пароль 8–100
+ * символов. Типы `RegisterBody` / `LoginBody` выводятся из схем (`z.infer`) и
+ * переиспользуются в authService.
+ */
 import { z } from 'zod';
 
 export const registerBodySchema = z.object({

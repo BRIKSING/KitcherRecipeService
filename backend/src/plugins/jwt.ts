@@ -1,3 +1,15 @@
+/**
+ * JWT-плагин (Этап 2 — §3.4).
+ *
+ * Регистрирует `@fastify/jwt` с секретом `JWT_SECRET` и TTL access-токена
+ * `JWT_ACCESS_EXPIRES_IN`. Тип полезной нагрузки `JwtPayload`
+ * (`user_id`, `username`, `is_admin`) расширяет типы `@fastify/jwt`, благодаря
+ * чему `request.user` строго типизирован после верификации.
+ *
+ * Декорирует инстанс методом `fastify.authenticate` — preHandler, который
+ * вызывает `request.jwtVerify()` и при ошибке бросает `UnauthorizedError`
+ * (401). Подпись токенов выполняется через `fastify.jwt.sign` в authService.
+ */
 import fp from 'fastify-plugin';
 import fastifyJwt from '@fastify/jwt';
 import { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
