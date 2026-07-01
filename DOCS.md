@@ -531,3 +531,185 @@ join-таблицу тегов в плоский массив, превраща�
 ингредиентами и тегами, проверки прав (403 не-автор, доступ admin),
 404/401, а также шаги: создание/обновление/удаление, 409 на дубликат
 `sort_order` (P2002), 422 на чужой шаг и транзакционный reorder.
+
+---
+
+## Этап 4 — Бэкенд: медиа и S3
+
+Загрузка, обработка и хранение изображений (§3.8): приём файла через
+multipart, серверная обработка `sharp` (автоповорот по EXIF, ресайз,
+конвертация HEIC/PNG → JPEG в двух вариантах), выгрузка в S3-совместимое
+хранилище, привязка загруженных фото к шагам рецепта и удаление объектов из
+S3 при удалении фото или рецепта.
+
+### Файлы этапа
+
+```
+backend/src/
+├── services/
+│   ├── storageService.ts  — обёртка над @aws-sdk/client-s3 (upload/delete/head/url)
+│   └── photoService.ts    — привязка/удаление/переупорядочивание фото шага
+├── utils/
+│   └── image.ts           — обработка изображений через sharp (§3.8 п.3)
+└── routes/
+    ├── upload.ts          — POST /upload/image (multipart)
+    └── photos.ts          — 3 эндпоинта /steps/:step_id/photos
+backend/tests/upload.test.ts — модульные тесты загрузки и фото шагов
+```
+
+### Поток загрузки изображения (§3.8)
+
+Загрузка намеренно разделена на два независимых шага, что позволяет клиенту
+сначала получить готовые URL, а привязку к конкретному шагу выполнить
+позже (или переиспользовать одно изображение):
+
+1. `POST /upload/image` — обрабатывает файл и кладёт оба варианта в S3,
+   возвращая `{ url, thumb_url, key }`;
+2. `POST /steps/:step_id/photos` — привязывает уже загруженный `key` к шагу.
+
+### Хранилище S3 (`services/storageService.ts`)
+
+Единственный `S3Client` создаётся при импорте модуля из значений `config`
+(`S3_ENDPOINT`, `S3_REGION`, ключи доступа). Включён `forcePathStyle: true`
+— это обязательно для MinIO и других S3-совместимых хранилищ, где бакет
+адресуется через путь (`endpoint/bucket/key`), а не поддомен.
+
+Публичный API сервиса:
+
+| Метод | Назначение |
+|---|---|
+| `getClient()` | доступ к низкоуровневому клиенту (используется в `GET /health`) |
+| `upload(key, body, contentType)` | `PutObjectCommand` — залить объект |
+| `delete(key)` | `DeleteObjectCommand` — удалить один объект |
+| `deleteMany(keys)` | параллельное удаление через `Promise.allSettled` |
+| `headBucket()` | `HeadBucketCommand` — проверка доступности бакета (healthcheck) |
+| `buildPublicUrl(key)` | `${S3_PUBLIC_URL}/${key}` — абсолютный URL объекта |
+
+`deleteMany` использует `Promise.allSettled`, а не `Promise.all`: удаление
+изображений — «best-effort» уборка, и ошибка по одному ключу (например,
+объект уже отсутствует) не должна прерывать удаление остальных и валить
+пользовательскую операцию удаления рецепта/фото.
+
+### Обработка изображений (`utils/image.ts`)
+
+Модуль инкапсулирует всю работу с `sharp` (§3.8 п.3) и не зависит от
+Fastify/S3 — его удобно тестировать и переиспользовать.
+
+- **`isAllowedMimeType(mime)`** — проверка MIME по белому списку:
+  `image/jpeg`, `image/jpg`, `image/png`, `image/heic`, `image/heif`
+  (регистр не важен). Используется роутером `upload.ts` для ответа 415.
+- **`processImage(input)`** — принимает исходный буфер и возвращает
+  `ProcessedImages` (`uuid`, `fullKey`, `thumbKey`, `fullBuffer`,
+  `thumbBuffer`):
+  1. генерируется `uuid` — общий префикс ключей `images/{uuid}/...`;
+  2. базовый конвейер `sharp(input, { failOnError: false }).rotate()`
+     применяет **автоповорот по EXIF orientation** и снимает
+     чувствительность к небольшим дефектам входного файла;
+  3. из общего базового конвейера через `.clone()` параллельно
+     (`Promise.all`) создаются два варианта:
+     - **`full`** — `fit: 'inside'`, максимум `1920px` по длинной стороне,
+       `withoutEnlargement: true` (мелкие изображения не растягиваются),
+       JPEG quality **85**;
+     - **`thumb`** — `fit: 'cover'` ровно `400×400px`, JPEG quality **80**;
+  4. любой вход (HEIC/HEIF/PNG) на выходе — **JPEG**, ключи фиксированы:
+     `images/{uuid}/full.jpg` и `images/{uuid}/thumb.jpg`.
+
+Единое соглашение об именах ключей (`.../full.jpg` ↔ `.../thumb.jpg`)
+позволяет остальному коду выводить один ключ из другого простой заменой
+подстроки — без хранения обоих ключей в БД (в `StepPhoto` хранится только
+`s3_key` полного изображения).
+
+### Роутер загрузки (`routes/upload.ts`)
+
+`POST /upload/image` (preHandler `authenticate`, §3.5 «Медиа»):
+
+1. получает файл через `request.file()` (`@fastify/multipart`, лимит 10 МБ
+   и 1 файл заданы на Этапе 1); отсутствие файла → **400** `VALIDATION_ERROR`;
+2. проверяет MIME через `isAllowedMimeType`; недопустимый → **415**
+   `UNSUPPORTED_MEDIA_TYPE`;
+3. читает буфер, вызывает `processImage`, параллельно (`Promise.all`)
+   заливает `full` и `thumb` в S3 с `Content-Type: image/jpeg`;
+4. отвечает **201** `{ url, thumb_url, key }` (§3.8 п.5).
+
+Превышение лимита размера 10 МБ обрабатывается не здесь, а глобальным
+error handler’ом (Этап 1) — `@fastify/multipart` бросает ошибку, которая
+маппится в **413** `FILE_TOO_LARGE` (§3.11).
+
+### Сервис фото (`services/photoService.ts`)
+
+Фабрика `createPhotoService(prisma)`. Приватный `assertStepOwner`
+загружает шаг вместе с `recipe.author_id` и проверяет существование
+(**404**) и владение рецептом (**403**, если не автор и не admin) — тот же
+контракт, что у `stepService` (§3.11); без этой проверки любой
+авторизованный пользователь мог бы менять фото на чужом рецепте.
+Приватный `thumbKeyFromFullKey` выводит ключ миниатюры заменой
+`/full.jpg` → `/thumb.jpg`.
+
+Операции:
+
+- **`upload(stepId, authorId, isAdmin, s3Key)`** — после проверки прав
+  считает текущее число фото у шага; при **≥ 5** бросает
+  `UnprocessableError` (**422**, лимит «до 5 фото на шаг», §2.7); иначе
+  создаёт `StepPhoto` со `sort_order`, равным текущему количеству (фото
+  добавляется в конец), и возвращает `{ id, url, thumb_url, sort_order }`.
+- **`delete(stepId, photoId, authorId, isAdmin)`** — проверка прав, поиск
+  фото по `id`+`step_id` (иначе **404**), удаление записи и затем
+  удаление **обоих** объектов из S3 (`full.jpg` + `thumb.jpg`) через
+  `deleteMany` (§3.8 «Удаление»).
+- **`reorder(stepId, authorId, isAdmin, orders)`** — проверка прав и
+  атомарное обновление `sort_order` в транзакции; `updateMany` с фильтром
+  по `step_id` гарантирует, что переупорядочить можно только фото
+  указанного шага.
+
+### Роутер фото (`routes/photos.ts`)
+
+Три эндпоинта (§3.5 «Фотографии шагов»), все под `authenticate`. Общие
+хелперы `sendZod` (Zod → **400** `VALIDATION_ERROR`) и `sendApp`
+(`AppError` → её статус/код).
+
+| Метод и путь | Тело | Успех | Ошибки |
+|---|---|---|---|
+| `POST /steps/:step_id/photos` | `{ key }` | `201` фото | 400, 403, 404, 422 |
+| `PATCH /steps/:step_id/photos/reorder` | `[{ id, sort_order }]` | `204` | 400, 403, 404 |
+| `DELETE /steps/:step_id/photos/:photo_id` | — | `204` | 403, 404 |
+
+Как и в роутере шагов, `PATCH .../photos/reorder` регистрируется **до**
+`DELETE .../photos/:photo_id`, чтобы литерал `reorder` не был воспринят как
+`photo_id`. Схема `attachPhotoSchema` требует непустой `key`;
+`reorderPhotosSchema` — непустой массив объектов `{ id: UUID,
+sort_order: int ≥ 0 }`.
+
+### Удаление S3-объектов при удалении рецепта/фото
+
+Уборка хранилища выполняется синхронно, после удаления записи в БД:
+
+- **удаление фото** — `photoService.delete` убирает `full.jpg` и
+  `thumb.jpg` удаляемого `StepPhoto`;
+- **удаление рецепта** — `recipeService.delete` (Этап 3) заранее собирает
+  все S3-ключи рецепта (обложка + фото всех шагов, каждый в паре
+  `full`/`thumb`), удаляет рецепт (каскад БД чистит шаги/фото) и затем
+  вызывает `storageService.deleteMany`. Использование `Promise.allSettled`
+  внутри `deleteMany` делает уборку устойчивой к отсутствующим объектам.
+
+### Сопоставление кодов ошибок (§3.11)
+
+| Код | Когда |
+|---|---|
+| `400 VALIDATION_ERROR` | файл не передан; пустой `key`; пустой/некорректный массив reorder |
+| `401 UNAUTHORIZED` | нет/невалиден access-токен |
+| `403 FORBIDDEN` | шаг принадлежит чужому рецепту (не автор и не admin) |
+| `404 NOT_FOUND` | шаг или фото не найдены |
+| `413 FILE_TOO_LARGE` | файл больше 10 МБ (глобальный error handler) |
+| `415 UNSUPPORTED_MEDIA_TYPE` | MIME вне белого списка |
+| `422 UNPROCESSABLE` | у шага уже 5 фото |
+
+### Тесты (`tests/upload.test.ts`)
+
+Модульные тесты на Vitest поднимают приложение через `buildApp()` с
+замоканными S3-клиентом (`send`), `processImage`, Prisma и bcrypt.
+Покрывают: `POST /upload/image` — 201 с `url`/`thumb_url`/`key` и двумя
+выгрузками в S3, 401 без токена, 415 на неподдерживаемый MIME, 400 без
+файла; `POST /steps/:id/photos` — 201, 401, 404, 403, 422 (лимит 5 фото),
+400 без `key`; `DELETE .../photos/:photo_id` — 204 с удалением двух
+объектов из S3, 404 для несуществующего фото; `PATCH .../photos/reorder` —
+204, 401, 400 на пустой массив, 404.
