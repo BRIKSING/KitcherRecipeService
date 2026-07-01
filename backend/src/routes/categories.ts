@@ -1,3 +1,13 @@
+/**
+ * Роутер категорий (Этап 5 — категории, теги, финализация).
+ *
+ * Реализует справочник категорий рецептов (§3.5 «Категории и теги»). Чтение
+ * (`GET /categories`, `GET /categories/:id`) открыто всем; изменяющие
+ * операции (`POST`, `DELETE`) доступны только администратору — на них навешаны
+ * preHandler `authenticate` + `isAdmin` (Этап 2). Тело `POST` валидируется
+ * Zod-схемой `createCategorySchema`; дубликат `name`/`slug` (Prisma `P2002`)
+ * конвертируется в 409 `CONFLICT` согласно §3.11.
+ */
 import { FastifyPluginAsync } from 'fastify';
 import { ZodError } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';

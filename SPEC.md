@@ -570,12 +570,12 @@ docker compose exec api npm run test                  # тесты (через d
 
 ### Этап 5 — Бэкенд: категории, теги, финализация
 
-- [y] Реализовать роутер `routes/categories.ts` (admin-only POST)
-- [y] Реализовать роутер `routes/tags.ts` (GET с поиском, POST)
-- [y] Добавить seed-файл `prisma/seed.ts` с категориями
-- [y] Настроить CORS (@fastify/cors) и security headers (@fastify/helmet)
-- [y] Проверить все коды ошибок по таблице 3.11
-- [y] Написать `README.md` с инструкцией по запуску
+- [d] Реализовать роутер `routes/categories.ts` (admin-only POST)
+- [d] Реализовать роутер `routes/tags.ts` (GET с поиском, POST)
+- [d] Добавить seed-файл `prisma/seed.ts` с категориями
+- [d] Настроить CORS (@fastify/cors) и security headers (@fastify/helmet)
+- [d] Проверить все коды ошибок по таблице 3.11
+- [d] Написать `README.md` с инструкцией по запуску
 
 ### Этап 6 — iOS клиент: каркас и сетевой слой
 

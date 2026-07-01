@@ -1,3 +1,9 @@
+/**
+ * Zod-схема категории (Этап 5). Валидирует тело `POST /categories`:
+ * `name` — 1–100 символов; `slug` — 1–100 символов из набора `[a-z0-9-]`
+ * (строчные латинские буквы, цифры и дефис). Нарушение → 400
+ * `VALIDATION_ERROR` (§3.11).
+ */
 import { z } from 'zod';
 
 export const createCategorySchema = z.object({

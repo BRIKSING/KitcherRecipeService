@@ -1,3 +1,13 @@
+/**
+ * Роутер тегов (Этап 5 — категории, теги, финализация).
+ *
+ * Реализует свободный справочник тегов (§3.5 «Категории и теги»).
+ * `GET /tags` открыт всем и поддерживает регистронезависимый поиск по `?q=...`
+ * (Prisma `contains` + `mode: 'insensitive'`) вместе с пагинацией
+ * (`page`/`per_page`, потолок 50) — ответ в формате `PaginatedResponse` (§3.7).
+ * `POST /tags` создаёт тег и требует лишь аутентификации (любой пользователь,
+ * не admin); дубликат имени (Prisma `P2002`) → 409 `CONFLICT` (§3.11).
+ */
 import { FastifyPluginAsync } from 'fastify';
 import { ZodError } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';

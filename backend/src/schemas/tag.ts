@@ -1,3 +1,10 @@
+/**
+ * Zod-схемы тегов (Этап 5).
+ * - `createTagSchema` — тело `POST /tags`: `name` 1–100 символов.
+ * - `tagSearchSchema` — query `GET /tags`: необязательный поиск `q` и
+ *   пагинация `page`/`per_page` (приводятся из строк через `z.coerce.number`,
+ *   `per_page` не более 50). Нарушение → 400 `VALIDATION_ERROR` (§3.11).
+ */
 import { z } from 'zod';
 
 export const createTagSchema = z.object({
