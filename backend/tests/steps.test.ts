@@ -163,6 +163,8 @@ describe('GET /recipes/:id/steps', () => {
     expect(body[0].timer_sec).toBe(480);
   });
 
+  // Регрессия на формат фото §3.7 (Этап 11): ответ содержит url + thumb_url,
+  // сырой s3_key наружу не выходит, а thumb выводится из full-ключа.
   it('returns steps with photo objects — url/thumb_url instead of raw s3_key', async () => {
     mockPrismaRecipe.findUnique.mockResolvedValue({ id: RECIPE_ID });
     mockPrismaStep.findMany.mockResolvedValue([stepWithPhoto]);

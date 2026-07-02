@@ -1,3 +1,21 @@
+/**
+ * Роутер шагов рецепта (§3.5, финализация формата фото — Этап 11).
+ *
+ * Пять эндпоинтов: `GET /recipes/:id/steps`, `POST /recipes/:id/steps`,
+ * `PATCH /recipes/:id/steps/reorder`, `PUT /recipes/:id/steps/:step_id`,
+ * `DELETE /recipes/:id/steps/:step_id`. Роут `reorder` регистрируется
+ * раньше `/:step_id`, иначе Fastify сматчил бы литерал `reorder` как
+ * `step_id`.
+ *
+ * Формат ответа. Все эндпоинты, возвращающие шаг (кроме `DELETE` → 204),
+ * отдают фото в публичном виде `{ id, url, thumb_url, sort_order }` —
+ * сырой `s3_key` наружу не выходит (§3.7). Сборкой URL занимается сервис
+ * (`formatStep`/`formatStepPhoto`), роутер лишь транслирует результат.
+ * `GET` открыт без аутентификации (просмотр), остальные требуют
+ * `Authorization: Bearer <access_token>` и проверяют владельца рецепта в
+ * сервисе. Доменные `AppError` конвертируются в `{ detail, code }` c нужным
+ * HTTP-кодом (§3.11); ошибки Zod → 400 `VALIDATION_ERROR`.
+ */
 import { FastifyPluginAsync } from 'fastify';
 import { ZodError } from 'zod';
 import { authenticate } from '../middleware/authenticate.js';
