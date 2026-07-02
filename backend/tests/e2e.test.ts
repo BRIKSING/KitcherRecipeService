@@ -1,13 +1,24 @@
 /**
  * E2E flow: registration → recipe creation → cooking session
+ * (Этап 11 — финальная интеграция: сквозной тест бэкенда).
  *
  * Simulates the complete backend API journey a mobile client would perform:
  * register → login → create draft recipe → add steps → attach photo →
  * reorder steps → publish → open recipe → fetch steps (cooking session) →
  * refresh token → logout
  *
+ * Соединяет вместе все этапы бэкенда (2–5) в один непрерывный пользовательский
+ * сценарий: аутентификация (Этап 2), CRUD рецептов/шагов и публикация
+ * (Этап 3), загрузка и привязка фото (Этап 4). Проверяет не только отдельные
+ * эндпоинты, но и их стыковку — токены, полученные из auth-ответов, реально
+ * используются для последующих защищённых запросов, а формат фото шагов
+ * (`url` + `thumb_url`, §3.7) выдержан и в `GET /recipes/:id`, и в
+ * `GET /recipes/:id/steps`.
+ *
  * Prisma, S3 and bcrypt are mocked; JWT is real (@fastify/jwt) so tokens
  * captured from auth responses work for subsequent authenticated requests.
+ * Порядок `it`-блоков значим: токены из шага 1–2 переиспользуются дальше,
+ * поэтому тесты выполняются последовательно (без `it.concurrent`).
  */
 
 import { vi, describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
